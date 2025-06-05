@@ -1,0 +1,14 @@
+[project]
+name = "mmm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyecharts>=2.0.7",
+    "python-fasthtml>=0.12.15",
+    "ruff>=0.11.8",
+]
+
+[tool.uv.workspace]
+members = ["misc/caus"]

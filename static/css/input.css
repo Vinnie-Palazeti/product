@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@source "./*.{html,php,erb,py}";
+@source "./../*.{html,php,erb,py}";
+@plugin "./daisyui.js"{
+  themes: light --default, dark --prefersdark, cupcake, retro, aqua, lofi, luxury, bumblebee;
+}
+
+/* Optional for custom themes – Docs: https://daisyui.com/docs/themes/#how-to-add-a-new-custom-theme */
+@plugin "./daisyui-theme.js"{
+  /* custom theme here */
+}
+

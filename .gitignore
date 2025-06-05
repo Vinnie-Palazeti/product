@@ -1,0 +1,6 @@
+.DS_Store
+.sesskey
+__pycache__/
+tailwindcss
+*.db
+.venv/

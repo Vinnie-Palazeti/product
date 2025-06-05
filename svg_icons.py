@@ -1,0 +1,2 @@
+from fasthtml.svg import *
+
