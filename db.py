@@ -53,4 +53,4 @@ def create_and_populate_database(db_path: str = "test_metrics.db", num_days: int
     )
 
 # Run it
-create_and_populate_database("test_metrics.db")
+# create_and_populate_database("test_metrics.db", num_days = 2000)

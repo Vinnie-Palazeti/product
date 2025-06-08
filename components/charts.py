@@ -23,17 +23,41 @@ function colorFromTheme(cssVarName = '--color-primary') {
       return rgb;
     }
 """)
+
+
+
 ### need to manually set tick bars..
 ## I could probably compute the primary color BEFORE I send it here.. using jscript from fasthml.. then pass it here
-
-## also need to somehow make cerything the same character length...
-
+## also need to somehow make everything the same character length...
 ## 100, 1000, 10000... etc
-def line_chart(x, y, x_axis_label=True, line_color=None):
 
+def line_chart(x, y, show_label=False, line_color=None):
+    ## need to add x axis first.
     c = (
         Line()
         .add_xaxis(xaxis_data=x)
+    )
+    ## if received a tuple, that means there is two series
+    ## a single list would be one series
+    if isinstance(y, tuple):
+        y_compare = y[-1] ## comparison period
+        y=y[0] ## selected period
+        
+        ## add comparion period
+        c = (
+            c
+            .add_yaxis(
+                series_name="",
+                y_axis=y_compare,
+                symbol="emptyCircle",
+                is_symbol_show=False,
+                label_opts=opts.LabelOpts(is_show=False, color='rgb(68, 158, 255)'),
+                linestyle_opts=opts.LineStyleOpts(color="rgb(68, 158, 255)"),
+                itemstyle_opts=opts.ItemStyleOpts(color="rgb(68, 158, 255)"),            
+            )
+        )
+    c = (
+        c       
         .add_yaxis(
             series_name="",
             y_axis=y,
@@ -64,7 +88,7 @@ def line_chart(x, y, x_axis_label=True, line_color=None):
                 # boundary_gap=False,
                 axislabel_opts=opts.LabelOpts(
                     formatter=JsCode("function(value, index){if (index === 0) {return '';} return value;}"),
-                    is_show=x_axis_label),
+                    is_show=show_label),
                 axisline_opts=opts.AxisLineOpts(is_show=False),
                 axistick_opts=opts.AxisTickOpts(is_show=False),
                 splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),
@@ -82,6 +106,7 @@ def line_chart(x, y, x_axis_label=True, line_color=None):
             ),
         )
     )
+    
     c = (
         Grid()
         .add(
@@ -96,6 +121,7 @@ def line_chart(x, y, x_axis_label=True, line_color=None):
         )
     )    
     return c
+
 
 def embed_chart(chart):
     # needs to be unique, but don't really need it after this
@@ -122,12 +148,9 @@ def embed_chart(chart):
     """)
     return chart_id, chart_script, chart_name
 
-def embed_line_chart(x, y, x_axis_label, cls='w-full h-full'): #
-    c = embed_chart(line_chart(x,y, x_axis_label))
+def embed_line_chart(x, y, show_label, cls='w-full h-full'): #
+    c = embed_chart(line_chart(x, y, show_label))
     return Div(c[1], id=c[0], cls=cls)
-
-# def connect_charts(chart_names):
-#     return Script(f"""\n echarts.connect([{",".join(['chart_'+i for i in chart_names])}])""")
 
 
 def bar_row(n,v,p,s,top:bool=False):

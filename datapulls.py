@@ -20,12 +20,12 @@ class PeriodType:
     DAILY = "Day"
     MONTHLY = "Month"
 
-
 def get_comparison_dates(
     time_period: str,
     comparison_type: Optional[str] = None,
     period_type: str = PeriodType.DAILY
 ) -> Dict[str, TimeRange]:
+    
     if period_type == PeriodType.DAILY:
         valid_periods = {"Last 14 Days": 14, "Last 30 Days": 30, "Last 90 Days": 90}
         days = valid_periods.get(time_period)
@@ -54,7 +54,8 @@ def get_comparison_dates(
     selected_range = TimeRange(start_date, end_date)
     result = {"selected_period": selected_range}
 
-    if comparison_type:
+    if comparison_type != 'No Comparison':
+        # print(comparison_type, start_date, end_date)
         if comparison_type == ComparisonType.PREVIOUS_PERIOD:
             comp_end = start_date - timedelta(days=1)
             if period_type == PeriodType.DAILY:
@@ -66,9 +67,9 @@ def get_comparison_dates(
             comp_end = end_date.replace(year=end_date.year - 1)
         else:
             raise ValueError("Invalid comparison type")
-
         result["comparison_period"] = TimeRange(comp_start, comp_end)
-
+        
+        # print(result["comparison_period"])
     return result
     
 def get_data(
@@ -97,7 +98,6 @@ def get_data(
             fields = ['date'] + fields
 
     date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
-
     try:
         conn = sqlite3.connect(database_path)
         conn.row_factory = sqlite3.Row
@@ -158,155 +158,4 @@ def calculate_totals(
 
 
 
-### Below I tried to infer the period from the date, but I have explicit options to select the grouping (the "GROUP" option)
-## what I instead need to do is REACT to the selected options
-
-
-
-## if last 90 days is select when we are on group, then the group should switch to DAY if it isn't already on day
-### if last 3 months is selected, the group should SWITCH to month if it is not already on it!
-
-
-
-
-# class PeriodType:
-#     DAILY = "Day"
-#     MONTHLY = "Month"
-
-# class ComparisonType:
-#     PREVIOUS_PERIOD = "Previous Period"
-#     PREVIOUS_YEAR = "Previous Year"
-
-# class TimeRange:
-#     def __init__(self, start: date, end: date):
-#         self.start = start
-#         self.end = end
-
-# def get_comparison_dates(
-#     time_period: str,
-#     comparison_type: Optional[str] = None
-# ) -> Dict[str, TimeRange]:
-    
-#     daily_periods = {"Last 14 Days": 14, "Last 30 Days": 30, "Last 90 Days": 90}
-#     monthly_periods = {
-#         "Last Month": 1,
-#         "Last 3 Months": 3,
-#         "Last 6 Months": 6,
-#         "Last 12 Months": 12,
-#     }
-
-#     today = datetime.now().date()
-
-#     if time_period in daily_periods:
-#         days = daily_periods[time_period]
-#         end_date = today
-#         start_date = end_date - timedelta(days=days)
-#         period_type = PeriodType.DAILY
-#     elif time_period in monthly_periods:
-#         months = monthly_periods[time_period]
-#         current_month_start = date(today.year, today.month, 1)
-#         end_date = current_month_start - timedelta(days=1)
-#         start_date = (current_month_start - relativedelta(months=months)).replace(day=1)
-#         period_type = PeriodType.MONTHLY
-#     else:
-#         raise ValueError(f"Invalid time period: {time_period}")
-
-#     selected_range = TimeRange(start_date, end_date)
-#     result = {"selected_period": selected_range}
-
-#     if comparison_type:
-#         if comparison_type == ComparisonType.PREVIOUS_PERIOD:
-#             comp_end = start_date - timedelta(days=1)
-#             if period_type == PeriodType.DAILY:
-#                 comp_start = comp_end - timedelta(days=days)
-#             else:
-#                 comp_start = (start_date - relativedelta(months=months)).replace(day=1)
-#         elif comparison_type == ComparisonType.PREVIOUS_YEAR:
-#             comp_start = start_date.replace(year=start_date.year - 1)
-#             comp_end = end_date.replace(year=end_date.year - 1)
-#         else:
-#             raise ValueError("Invalid comparison type")
-
-#         result["comparison_period"] = TimeRange(comp_start, comp_end)
-
-#     return result
-
-
-# def get_data(
-#     time_period: str,
-#     database_path: str = 'test_metrics.db',
-#     fields: Optional[List[str]] = ['users', 'gross_revenue', 'expenses'],
-#     comparison_type: Optional[str] = None
-# ) -> Dict[str, List[Tuple]]:
-
-#     daily_periods = {"Last 14 Days", "Last 30 Days", "Last 90 Days"}
-#     monthly_periods = {"Last Month", "Last 3 Months", "Last 6 Months", "Last 12 Months"}
-
-#     if time_period in daily_periods:
-#         period_type = PeriodType.DAILY
-#     elif time_period in monthly_periods:
-#         period_type = PeriodType.MONTHLY
-#     else:
-#         raise ValueError(f"Invalid time period: {time_period}")
-
-#     valid_fields = set(['date'] + METRICS)
-
-#     # Adjust default fields based on period_type
-#     if period_type == PeriodType.DAILY:
-#         default_fields = list(valid_fields)
-#     else:
-#         default_fields = list(valid_fields - {'date'})  # 'date' will be replaced with 'month'
-
-#     if fields is None:
-#         fields = default_fields
-#     else:
-#         invalid = set(fields) - valid_fields
-#         if invalid:
-#             raise ValueError(f"Invalid fields: {', '.join(invalid)}. Valid fields: {', '.join(valid_fields)}")
-#         if period_type == PeriodType.DAILY and 'date' not in fields:
-#             fields = ['date'] + fields
-
-#     date_ranges = get_comparison_dates(time_period, comparison_type)
-
-#     try:
-#         conn = sqlite3.connect(database_path)
-#         conn.row_factory = sqlite3.Row
-#         cursor = conn.cursor()
-#         results = {}
-
-#         if period_type == PeriodType.DAILY:
-#             fields_str = ', '.join(fields)
-#             base_query = f"""
-#                 SELECT {fields_str}
-#                 FROM events
-#                 WHERE date >= ? AND date <= ?
-#                 ORDER BY date
-#             """
-#         else:  # MONTHLY
-#             agg_expressions = [f"SUM({field}) as {field}" for field in fields]
-#             agg_fields_str = ', '.join(agg_expressions)
-#             base_query = f"""
-#                 SELECT 
-#                     strftime('%Y-%m', date) as month,
-#                     {agg_fields_str}
-#                 FROM events
-#                 WHERE date >= ? AND date <= ?
-#                 GROUP BY strftime('%Y-%m', date)
-#                 ORDER BY month
-#             """
-
-#         for label, time_range in date_ranges.items():
-#             cursor.execute(base_query, (
-#                 time_range.start.isoformat(),
-#                 time_range.end.isoformat()
-#             ))
-#             results[label] = cursor.fetchall()
-
-#         return results
-
-#     except sqlite3.Error as e:
-#         raise Exception(f"Database error: {str(e)}")
-#     finally:
-#         if conn:
-#             conn.close()
 

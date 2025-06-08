@@ -7,7 +7,7 @@ from components.svg import *
 ### duplicated. bad
 METRICS = ['users','gross_revenue', 'expenses','profit','new_users','returning_customers','impressions','traffic','buzz']
 TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days','Last 3 Months','Last 6 Months', 'Last 12 Months']
-COMPARISON_OPTS = ['Previous Period','Prior Year','No Comparison']
+COMPARISON_OPTS = ['Previous Period','Previous Year','No Comparison']
 GROUP_OPTS= ['Day','Month','Year']
 
 LABEL_OPTION_MAP = {'Date Range': 'time', 'Comparison Period': 'comparison', 'Time Unit':'group'}
@@ -36,15 +36,13 @@ TIME_GROUP_OPTS_MAP = {
     **{val:'Month' for val in TIME_MONTH_OPTS},
     **{val:'Year' for val in TIME_YEAR_OPTS}
 }
-
 OPTION_ANCHOR_MAP = {'time':1, 'comparison':2, 'group':3}
-
 OPTION_ICON_MAP = {'time':calendar, 'comparison':compare}
 
 @dataclass
 class DashContent:
     time: str='Last 14 Days'
-    comparison: str='Previous Period'
+    comparison: str='No Comparison'
     group: str='Day'
     fields: list[str] = field(default_factory=lambda: ['users','gross_revenue', 'expenses'])
     
@@ -62,7 +60,6 @@ def metrics_select(options: Optional[List] = None):
                 hx_vals=dict(field=m),
                 cls=f'{"menu-active" if m in options else ""} m-1',
                 id=f'metric-{m}-button',
-                hx_on__after_request="handleButtonClick(this)",
                 onclick="if (!this.classList.contains('menu-active')) { this.classList.add('menu-active'); }",
                 )
             )
@@ -84,6 +81,7 @@ def _format_option_value(v):
 
 ## this below could be simplied so I am always just passing the value? something like that
 def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
+    
     options = OPTIONS_OPTIONS_MAP.get(option_grp)
     if len(options) >= 6:
         options = options[:3] + [Div(cls='divider my-0')] + options[3:]
@@ -112,10 +110,15 @@ def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
     )
     return Fieldset(cls='fieldset', id=f'option-{option_grp}', hx_swap_oob=hx_swap_oob)(Legend(cls='fieldset-legend pb-0')(OPTION_LABEL_MAP.get(option_grp)), _select_menu)
 
+
+## date range works...
+## need comparison 
 def options_bar(dates:str='Last 14 Days', comparison:str='No Comparison', group:str='Day'):
+    
     t_select = _option(value=Span(B(dates)), option_grp='time', anchor=OPTION_ANCHOR_MAP.get('time'))
     c_select = _option(value=Span(B(comparison)), option_grp='comparison', anchor=OPTION_ANCHOR_MAP.get('comparison'))
     g_select = _option(value=Span('Metrics By ', B(group)), option_grp='group', anchor=OPTION_ANCHOR_MAP.get('group'))
+    
     return (
         Div(cls='flex flex-row flex-nowrap gap-2 pb-5 shrink-0')(
             t_select,

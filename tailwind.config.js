@@ -5,7 +5,10 @@ module.exports = {
       "**/*.html", 
       "**/*.js",     
     ],
-    theme: {},
+    
+    theme: {
+
+    },
   
     plugins: [
       require("daisyui")
