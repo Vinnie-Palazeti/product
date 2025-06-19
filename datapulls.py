@@ -1,11 +1,10 @@
 import sqlite3
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
-from typing import List, Optional, Dict, Tuple
+from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from components.relationships import KPI_DIMENSIONS
 
-### duplicated. bad
-METRICS = ['users','gross_revenue', 'expenses','profit','new_users','returning_customers','impressions','traffic','buzz']
 
 @dataclass
 class TimeRange:
@@ -68,94 +67,224 @@ def get_comparison_dates(
         else:
             raise ValueError("Invalid comparison type")
         result["comparison_period"] = TimeRange(comp_start, comp_end)
-        
-        # print(result["comparison_period"])
     return result
-    
+
+
+def format_results(
+    rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Given flat KPI‐rows like
+      {'date':'2025-06-01','kpi':'revenue','total_value':120000.3}, …
+    Pivot them into one dict per date, then return a list sorted by date:
+      [
+        {'date':'2025-06-01','revenue':120000.3, 'expenses':…},
+        {'date':'2025-06-02', …},
+        …
+      ]
+    """
+    # Step 1: aggregate into a dict of date → {kpi: value}
+    by_date: Dict[str, Dict[str, float]] = {}
+    for r in rows:
+        date = r['date']
+        by_date.setdefault(date, {})[r['kpi']] = r['total_value']
+
+    # Step 2: build a sorted list of dicts
+    formatted: List[Dict[str, Any]] = []
+    for date in sorted(by_date):  # ISO dates sort correctly as strings
+        entry = {'date': date}
+        entry.update(by_date[date])
+        formatted.append(entry)
+    return formatted
+
 def get_data(
+    fields: List[str],
     time_period: str,
-    database_path: str='test_metrics.db',
-    fields: Optional[List[str]] = ['users', 'gross_revenue', 'expenses'],
+    database_path: str = 'test_metrics.db',
     comparison_type: Optional[str] = None,
-    period_type: str = PeriodType.DAILY
-) -> Dict[str, List[Tuple]]:
-    
-    valid_fields = set(sum([['date'], METRICS], []))
+    period_type: PeriodType = PeriodType.DAILY,
+    dimension_list: Optional[List[str]] = None
+) -> Dict[str, List[sqlite3.Row]]:
+    """
+    Fetch summed KPI values by day or month, grouped by KPI.
 
-    if period_type == PeriodType.DAILY:
-        default_fields = list(valid_fields)
-    else:
-        default_fields = list(valid_fields - {'date'})  # no 'date', month will be generated
+    Args:
+      fields:        list of KPI names (e.g. ['revenue','expenses'])
+      time_period:     a period string to pass into get_comparison_dates
+      comparison_type: optional comparison (e.g. 'vs_last_year')
+      period_type:     DAILY or MONTHLY
+      dimension_list:  optional list of dimension names to filter on
 
-    if fields is None:
-        fields = default_fields
-    
-    else:
-        invalid = set(fields) - valid_fields
-        if invalid:
-            raise ValueError(f"Invalid fields: {', '.join(invalid)}. Valid fields: {', '.join(valid_fields)}")
-        if period_type == PeriodType.DAILY and 'date' not in fields:
-            fields = ['date'] + fields
-
+    Returns:
+      A dict mapping each comparison‐range label to a list of sqlite3.Row, each row with:
+        • date (or period)
+        • kpi
+        • total_value
+    """
+    # 1. compute the date windows
     date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
-    try:
-        conn = sqlite3.connect(database_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        results = {}
-        if period_type == PeriodType.DAILY:
-            fields_str = ', '.join(fields)
-            base_query = f"""
-                SELECT {fields_str}
-                FROM events
-                WHERE date >= ? AND date <= ?
-                ORDER BY date
-            """
-        else:  # MONTHLY
-            agg_expressions = [f"SUM({field}) as {field}" for field in fields]
-            agg_fields_str = ', '.join(agg_expressions)
-            base_query = f"""
-                SELECT 
-                    strftime('%Y-%m', date) as date,
-                    {agg_fields_str}
-                FROM events
-                WHERE date >= ? AND date <= ?
-                GROUP BY strftime('%Y-%m', date)
-                ORDER BY 1
-            """
 
-        for label, time_range in date_ranges.items():
-            cursor.execute(base_query, (
-                time_range.start_date.isoformat(),
-                time_range.end_date.isoformat()
-            ))
-            results[label] = cursor.fetchall()
+    # 2. choose date vs. month expressions
+    if period_type == PeriodType.DAILY:
+        date_expr = "date"
+        grp_date = "date"
+        ord_date = "date"
+    else:
+        date_expr = "strftime('%Y-%m', date) AS period"
+        grp_date = "period"
+        ord_date = "period"
+
+    # 3. build SQL with KPI‐IN and optional dimension filter
+    kpi_ph = ", ".join("?" for _ in fields)
+    sql = f"""
+    SELECT
+      {date_expr},
+      kpi,
+      SUM(value) AS total_value
+    FROM events
+    WHERE
+      kpi IN ({kpi_ph})
+      AND date BETWEEN ? AND ?
+    """
+
+    params_extra: List[str] = []
+    if dimension_list:
+        dim_ph = ", ".join("?" for _ in dimension_list)
+        sql += f"  AND dimension IN ({dim_ph})\n"
+        params_extra = dimension_list
+
+    sql += f"""
+    GROUP BY
+      {grp_date},
+      kpi
+    ORDER BY
+      {ord_date},
+      kpi
+    """
+
+    # 4. execute one query per comparison window
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    results: Dict[str, List[sqlite3.Row]] = {}
+
+    try:
+        for label, rng in date_ranges.items():
+            params = (
+                fields
+                + [rng.start_date.isoformat(), rng.end_date.isoformat()]
+                + params_extra
+            )
+            cur.execute(sql, params)
+            out = cur.fetchall()
+            results[label] = format_results(out)
+        return results
+    finally:
+        conn.close()
+        
+        
+       
+
+def get_bar_data(
+    kpi: str,
+    dimension_list: List[str],
+    time_period: str,
+    database_path: str = 'test_metrics.db',
+    comparison_type: Optional[str] = None,
+    period_type: PeriodType = PeriodType.DAILY
+) -> Dict[str, List[sqlite3.Row]]:
+    """
+    Returns total KPI values for each (dimension, category) over the given time window.
+
+    Args:
+      kpi:             the single KPI to filter on (e.g. 'revenue')
+      dimension_list:  list of dimension names to include (e.g. ['Sales Channel', 'Time of Day'])
+      time_period:     period string for get_comparison_dates
+      comparison_type: optional comparison (e.g. 'vs_last_year')
+      period_type:     DAILY or MONTHLY
+
+    Returns:
+      A dict mapping each comparison‐range label to a list of sqlite3.Row, each row with:
+        • dimension
+        • category
+        • total_value
+    """
+    if not dimension_list:
+        dimension_list = list(KPI_DIMENSIONS.get(kpi).keys())
+    # compute the date windows
+    date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
+    # prepare SQL placeholders for dimensions
+    dim_ph = ", ".join("?" for _ in dimension_list)
+
+    sql = f"""
+        SELECT
+            dimension,
+            category,
+            SUM(value) AS total_value,
+            SUM(SUM(value)) OVER (PARTITION BY dimension) AS dimension_total            
+        FROM events
+        WHERE
+            kpi = ?
+            AND dimension IN ({dim_ph})
+            AND date BETWEEN ? AND ?
+        GROUP BY
+            dimension,
+            category
+        ORDER BY
+            dimension,
+            total_value DESC
+    """
+
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    results: Dict[str, List[sqlite3.Row]] = {}
+
+    try:
+        for label, rng in date_ranges.items():
+            params = (
+                [kpi]
+                + dimension_list
+                + [rng.start_date.isoformat(), rng.end_date.isoformat()]
+            )
+            cur.execute(sql, params)
+            out=cur.fetchall()
+            results[label]=[dict(i) for i in out]
         return results
 
     except sqlite3.Error as e:
-        raise Exception(f"Database error: {str(e)}")
+        raise RuntimeError(f"Database error: {e}")
     finally:
-        if conn:
-            conn.close()
-
+        conn.close()
+        
 def calculate_totals(
-    results: Dict[str, List[Tuple]],
-    fields: List[str]
-    ) -> Dict[str, Dict[str, float]]:
-    totals = {}
+    results: Dict[str, List[Dict[str, Any]]]
+) -> Dict[str, Dict[str, float]]:
+    """
+    Given:
+      results = {
+        "current": [
+          {'date':'2025-06-01','expenses':49778.47,'revenue':82555.97,'profit':32777.5},
+          {'date':'2025-06-02','expenses':55073.74,'revenue':83259.84,'profit':28186.1},
+          …
+        ],
+        "previous": [ … ]
+      }
+    Returns:
+      {
+        "current":  {'expenses': 104852.21, 'revenue': 165815.81, 'profit': 60963.6, …},
+        "previous": { … }
+      }
+    """
+    totals: Dict[str, Dict[str, float]] = {}
+
     for period, rows in results.items():
-        summary = {}
-        if not rows:
-            totals[period] = {field: 0.0 for field in fields}
-            continue
-        for field in fields:
-            values = [dict(row).get(field) for row in rows]
-            if isinstance(values[0], str):
-                continue
-            summary[field] = sum(values)
-        totals[period] = summary
+        acc: Dict[str, float] = {}
+        for row in rows:
+            for key, val in row.items():
+                if key == "date":
+                    continue
+                # assume any non-date field is numeric
+                acc[key] = acc.get(key, 0.0) + val
+        totals[period] = acc
     return totals
-
-
-
-

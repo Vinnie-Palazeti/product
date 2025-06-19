@@ -1,22 +1,15 @@
 from components.options import *
 from components.options import _option
 from components.charts import *
-from components.misc import *
-from components.svg import SVG_MAP, plus
+
 from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import * 
 
+# from db import *
 
-# from db import create_and_populate_database
 # create_and_populate_database("test_metrics.db", num_days = 2000)
-    
-
-
 ## I think to handle the min width stuff I need to just format the grid columns
-
-
-
 
 headers = [
     Meta(charset="UTF-8"),
@@ -29,10 +22,12 @@ headers = [
     Link(href="https://cdn.jsdelivr.net/npm/daisyui@5", rel="stylesheet", type="text/css"),
     Script(src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"),
     
+    # Script(src='https://colorjs.io/dist/color.js'),
+    
     # local daisyui & tailwind
     # Link(rel="stylesheet", href="/static/css/output.css", type="text/css"),
     ## daisy themes
-    # Link(href='https://cdn.jsdelivr.net/npm/daisyui@5/themes.css', rel='stylesheet', type='text/css'),
+    Link(href='https://cdn.jsdelivr.net/npm/daisyui@5/themes.css', rel='stylesheet', type='text/css'),
     
     ## theme changer
     Script(src="https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js"),
@@ -95,118 +90,64 @@ headers = [
             transform-origin: left; /* ensures it grows from the left */
         }      
         
-  .no-left-padding,
-  .no-left-padding * {
-    padding-left: 0 !important;
-  }        
-    """),
+        .no-left-padding,
+        .no-left-padding * {
+            padding-left: 0 !important;
+        }        
+    """)   
 ]
 
-app, rt = fast_app(hdrs=headers, default_hdrs=False, live=True)
+app, rt = fast_app(hdrs=headers, default_hdrs=False, live=True, htmlkw={"data-theme": "light"} )
 # app = FastHTML(title='Themes', hdrs=headers, default_hdrs=False)
 # rt = app.route
 
 @rt("/{fname:path}.{ext:static}")
 def get(fname: str, ext: str):
     return FileResponse(f"{fname}.{ext}")
-
-METRICS = ['users','gross_revenue', 'expenses','profit','new_users','returning_customers','impressions','traffic','buzz']
-
-## remove decimals if over 1k
-def format_metric(value, dollar):
-    if dollar:
-        if value >= 1000:
-            return f'${value:,.0f}'
-        else:
-            return f'${value:,.2f}'
-    else:
-        return f'{value:,.0f}'
-
-
-def stat(name:str, value, dollar:bool = True, comparison=None):
-    if comparison:
-        pct_chng = (value - comparison) / value * 100
-    return (
-        ## h-[100px] could set the height based on position (1st being taller to make up for top labels) to make then more equal
-        ## set the max height of the article to stop the stat + line chart from getting way to large 
-        Article(cls="relative p-6 col-span-1 group bg-base-100 hover:bg-base-200 transition-colors duration-200 max-h-24", id=f'stat-{name}')(
-            
-            Div(cls="absolute top-1 right-1 text-base-600 opacity-0 group-hover:opacity-100 transition-opacity duration-1000")(              
-                Div(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200', 
-                    hx_post='/remove-metric', hx_target=f'#metric-container-{name}', hx_swap='outerHTML', hx_vals=dict(field=name),
-                    id=f'#stat-{name}-x')(
-                        SVG_MAP.get("x")
-                    )
-            ),
-            Div(cls="absolute top-1 right-7 text-base-600 opacity-0 group-hover:opacity-100 transition-opacity duration-1000")(
-                Div(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200')(
-                    SVG_MAP.get("visit")
-                )
-            ),                     
-            Div(cls="flex items-center justify-between")(
-                Div()(
-                    P(name.replace('_',' ').title(), cls="text-sm text-gray-500"),
-                    P(format_metric(value, dollar), 
-                    cls="text-2xl font-medium text-gray-900"),
-                ),
-                Span(cls="text-blue-600 mt-5")(SVG_MAP.get(name)),
-            ),
-            None if not comparison else 
-            Div(cls=f"mt-1 flex gap-1 text-{'success' if pct_chng >=0 else 'error'}")(
-                SVG_MAP.get('increase') if pct_chng >= 0  else SVG_MAP.get('decrease'),
-                P(cls="flex gap-2 text-xs")(Span(f"{pct_chng:,.2f}%", cls="font-medium")),
-            )
-        )
-    )
-    
     
 
-def stat_chart(name, dates, timeseries, totals, show_label):
-    if isinstance(timeseries, tuple):
-        
-        y = (
-            [round(i.get(name), 2) for i in timeseries[0]], # main data
-            [round(i.get(name), 2) for i in timeseries[1]], # comparison
-        )
-    else:
-        y = [i.get(name) for i in timeseries]
-
-    c = embed_line_chart(x=dates, y=y, show_label=show_label)
-    
-    return (
-        Div(id=f'metric-container-{name}', cls="contents")( ## this is a wrapper. display:contents -> element itself disappears and children styling  & layout is displayed
-        stat(
-            name=name, value=totals.get('selected_period').get(name), 
-            dollar=name not in UNIT_FIELDS, 
-            comparison=totals.get('comparison_period').get(name) if isinstance(y, tuple) else False
-        ), 
-        Div(c, cls="col-span-2", id=f'{name}-chart'))
-    )
-    
 def render_content(content: DashContent, hx_swap:str=None):
     ## get all data
     data = get_data(
-        content.time,
+        time_period=content.time,
         comparison_type=content.comparison,
         period_type=content.group,
         fields=content.fields,
     )
     ## summarize data
-    totals = calculate_totals(data, content.fields)
-    ## transform to list[dict]
-    timeseries = [dict(row) for row in data.get('selected_period')]
-    # get dates for selected period
-    dates = [i.get('date') for i in timeseries]
-    if data.get('comparison_period'):
-        timeseries = (timeseries, [dict(row) for row in data.get('comparison_period')])
-    stat_charts = [stat_chart(f, dates, timeseries, totals, show_label=True if n==0 else False) for n, f in enumerate(content.fields)]
-    
-    return Div(cls="grid grid-cols-2 gap-4", id='stat-chart-container', hx_swap_oob=hx_swap)(
-        Div(cls="grid grid-cols-3", id='stat-chart-content')(
-            *[c for c in stat_charts]
-        )
+    totals = calculate_totals(results=data)
+    if not content.bar_dims:
+        setattr(content,'bar_dims', list(KPI_DIMENSIONS.get(content.bar_kpi).keys()))
+    ## get bar chart data.
+    bar_data = get_bar_data(kpi=content.bar_kpi, dimension_list=content.bar_dims, time_period=content.time, comparison_type=content.comparison, period_type=content.group)
+    ## format stat + line charts
+    stat_charts = [stat_chart(name=f, timeseries=data, totals=totals, show_label=True if n==0 else False) for n, f in enumerate(content.fields)]
+    ## format bar charts
+    bar_charts = [bar_chart(dim=dim, data=bar_data, kpi=content.bar_kpi) for dim in content.bar_dims]
+    return Div(cls="grid grid-cols-2 gap-4 items-start", id='stat-chart-container', hx_swap_oob=hx_swap)(
+        Div(cls="grid grid-cols-3", id='stat-chart-content')(*[c for c in stat_charts]),
+        Div(cls="grid grid-cols-4 gap-y-30 gap-x-10", id='bar-chart-content')(*[c for c in bar_charts])
     )
-
+    
+## need to append the hidden value fields...
+@rt("/append-metric")
+def post(field:str, group:str, time:str, comparison:str, fields:list[str]):
+    ## if the field is currently present in the hidden fields
+    if field in fields[0]:
+        return None
+    ## if there is at least one field and there is a space present
+    ## split the contents of the list    
+    if len(fields) == 1 and ' ' in fields[0]:
+        fields = fields[0].split(' ') + [field]
+    # get data
+    data = get_data(
+        time_period=time,
+        comparison_type=comparison,
+        period_type=group,
+        fields=[field],
+    )
+    totals = calculate_totals(results=data)
+    return (stat_chart(name=field, timeseries=data, totals=totals, show_label=False), Input(type='hidden', name='fields', value=fields, id='fields-value', hx_swap_oob='outerHTML'))
 
 ## removes stat and line chart
 @rt("/remove-metric")
@@ -229,35 +170,6 @@ def post(field:str, fields:list[str]):
     # swap oob the button and current fields value
     return None, but, Input(type='hidden', name='fields', value=fields_values, id='fields-value', hx_swap_oob='outerHTML')
 
-## need to append the hidden value fields...
-@rt("/append-metric")
-def post(field:str, group:str, time:str, comparison:str, fields:list[str]):
-    ## if the field is currently present in the hidden fields
-    if field in fields[0]:
-        return None
-    ## if there is at least one field and there is a space present
-    ## split the contents of the list    
-    if len(fields) == 1 and ' ' in fields[0]:
-        fields = fields[0].split(' ') + [field]
-    # get data
-    data = get_data(
-        time_period=time,
-        comparison_type=comparison,
-        period_type=group,
-        fields=[field],
-    )
-    # calculate totals for period
-    totals = calculate_totals(data, fields=[field])
-    # get selected period data
-    timeseries = [dict(row) for row in data.get('selected_period')]
-    # get dates from period
-    dates = [i.get('date') for i in timeseries]
-    # if there is comparison data, get that
-    if data.get('comparison_period'):
-        # put selected and comparison in the same tuple
-        timeseries = (timeseries, [dict(row) for row in data.get('comparison_period')])
-    return (stat_chart(field, dates, timeseries, totals, show_label=False), Input(type='hidden', name='fields', value=fields, id='fields-value', hx_swap_oob='outerHTML'))
-
 @rt("/")
 def get():
     ## load defaults for user/session
@@ -266,6 +178,7 @@ def get():
     return Body(cls="min-h-screen")(
         sidebar(),
         top_navbar(),
+        Script(src="/static/js/oklch-rgb.js"),
         ############ main ############
         Form()(
             Div(cls="main-content min-h-screen expanded p-5")(
@@ -273,26 +186,20 @@ def get():
                 metrics_select(content.fields),
                 render_content(content),
             ),
-            
             Input(type='hidden', name='comparison', value=content.comparison, id='comparison-value'),
             Input(type='hidden', name='time', value=content.time, id='time-value'),
             Input(type='hidden', name='group', value=content.group, id='group-value'),
             Input(type='hidden', name='fields', value=content.fields, id='fields-value'), # default fields
-            
-            
         ),
-        Script(src="/collapse.js"),
+        Script(src="/static/js/collapse.js"),
+        Script(src="/static/js/chart-color.js")
     )
 
 @rt("/options-input")
 def post(content:DashContent, pressed:str):
-    # print(asdict(content))
-    # print(pressed)
-    
     ## not sure why data class not list of strings.. turns it into a list of 1 concatenated string
     if len(content.fields) == 1 and ' ' in content.fields[0]:
         setattr(content,'fields', content.fields[0].split(' '))
-        
     # return button option with updated pressed value and the hidden value 
     out = (
         _option(value=getattr(content, pressed), option_grp=pressed, anchor=OPTION_ANCHOR_MAP.get(pressed)), 

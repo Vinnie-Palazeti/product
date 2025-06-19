@@ -1,1 +1,0 @@
-UNIT_FIELDS = ['users', 'new_users', 'returning_customers','impressions','traffic','buzz']

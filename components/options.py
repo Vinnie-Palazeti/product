@@ -1,51 +1,9 @@
 from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import *
-from dataclasses import dataclass, field, asdict
 from components.svg import *
+from components.relationships import *
 
-### duplicated. bad
-METRICS = ['users','gross_revenue', 'expenses','profit','new_users','returning_customers','impressions','traffic','buzz']
-TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days','Last 3 Months','Last 6 Months', 'Last 12 Months']
-COMPARISON_OPTS = ['Previous Period','Previous Year','No Comparison']
-GROUP_OPTS= ['Day','Month','Year']
-
-LABEL_OPTION_MAP = {'Date Range': 'time', 'Comparison Period': 'comparison', 'Time Unit':'group'}
-OPTION_LABEL_MAP = {'time':'Date Range','comparison':'Comparison Period','group':'Time Unit'}
-
-OPTIONS_MAP = {
-    **{val: 'time' for val in TIME_OPTS},
-    **{val: 'comparison' for val in COMPARISON_OPTS},
-    **{val: 'group' for val in GROUP_OPTS},
-}
-OPTIONS_OPTIONS_MAP = {'time':TIME_OPTS, 'comparison':COMPARISON_OPTS, 'group':GROUP_OPTS}
-
-TIME_DAY_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days']
-TIME_MONTH_OPTS = ['Last 3 Months','Last 6 Months', 'Last 12 Months']
-TIME_YEAR_OPTS = ['Last 2 Years', 'Last 3 Years']
-
-TIME_GROUP_OPTIONS = {v:k for v,k in zip(GROUP_OPTS, [TIME_DAY_OPTS,TIME_MONTH_OPTS,TIME_YEAR_OPTS])}
-
-GROUP_TIME_OPTS_MAP = {
-    **{'Day': val for val in TIME_DAY_OPTS},
-    **{'Month': val for val in TIME_MONTH_OPTS},
-    **{'Year': val for val in TIME_YEAR_OPTS}
-}
-TIME_GROUP_OPTS_MAP = {
-    **{val:'Day' for val in TIME_DAY_OPTS},
-    **{val:'Month' for val in TIME_MONTH_OPTS},
-    **{val:'Year' for val in TIME_YEAR_OPTS}
-}
-OPTION_ANCHOR_MAP = {'time':1, 'comparison':2, 'group':3}
-OPTION_ICON_MAP = {'time':calendar, 'comparison':compare}
-
-@dataclass
-class DashContent:
-    time: str='Last 14 Days'
-    comparison: str='No Comparison'
-    group: str='Day'
-    fields: list[str] = field(default_factory=lambda: ['users','gross_revenue', 'expenses'])
-    
 def format_str(s):
     return s.replace('_',' ').title()
 
@@ -68,13 +26,12 @@ def metrics_select(options: Optional[List] = None):
     _metrics_dd = (
         Ul(cls='menu')(
             Li()(
-                Button(("KPIs", plus), type="button", cls='btn btn-neutral btn-dash h-8', popovertarget=f'popover-metrics-1', style=f"anchor-name:--anchor-metrics-1"),
-                Ul(popover=True, cls='dropdown menu bg-white w-52 shadow-xl', id=f'popover-metrics-1', style=f"position-anchor:--anchor-metrics-1")(*ops)            
+                Button(("KPIs", plus), type="button", cls='btn btn-primary btn-dash h-8', popovertarget=f'popover-metrics-1', style=f"anchor-name:--anchor-metrics-1"),
+                Ul(popover=True, cls='dropdown menu bg-base-100 w-52 shadow-xl', id=f'popover-metrics-1', style=f"position-anchor:--anchor-metrics-1")(*ops)            
             ),
         )
     )
     return _metrics_dd
-
 
 def _format_option_value(v):
     return Span(B(v)) if not OPTIONS_MAP.get(v)=='group' else Span('Metrics By ', B(v)) ## only group has this extra formatting
@@ -97,19 +54,17 @@ def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
         else o 
         for o in options
     ]
-    
     icon = OPTION_ICON_MAP.get(option_grp, None)
     _selected = Div(cls='flex flex-row gap-x-3 items-center')(Span(icon) if icon else None, _format_option_value(value), Span(arrow_down))
     _select_menu = (
         Ul(cls='menu menu-horizontal shrink-0')(
             Li()(
                 Button(_selected, type='button', cls='btn h-8', popovertarget=f'popover-{anchor}', style=f"anchor-name:--anchor-{anchor}"),
-                Ul(popover=True, cls='dropdown menu bg-white w-52 shadow-xl mt-1', id=f'popover-{anchor}', style=f"position-anchor:--anchor-{anchor}")(*opts)            
+                Ul(popover=True, cls='dropdown menu bg-base-100 w-52 shadow-xl mt-1', id=f'popover-{anchor}', style=f"position-anchor:--anchor-{anchor}")(*opts)            
             ),
         )
     )
     return Fieldset(cls='fieldset', id=f'option-{option_grp}', hx_swap_oob=hx_swap_oob)(Legend(cls='fieldset-legend pb-0')(OPTION_LABEL_MAP.get(option_grp)), _select_menu)
-
 
 ## date range works...
 ## need comparison 
@@ -191,7 +146,6 @@ def top_navbar():
             # A('MyApp', cls='btn btn-ghost normal-case text-xl')
         ),
         Div(cls='flex-none')(
-
             ## theme palette
             Div(cls='dropdown dropdown-end')(
                 Label(tabindex='0', cls='btn btn-ghost btn-circle')(
@@ -203,22 +157,21 @@ def top_navbar():
                 Div(tabindex='0', cls='mt-3 card card-compact dropdown-content w-52 bg-base-100 shadow-lg')(
                     Div(cls='card-body')(
                         Input(type='radio', name='theme-buttons', aria_label='Default', value='default', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', aria_label='Dark', value='dark', cls='btn theme-controller join-item'),
+                        # Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
+                        # Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
+                        # Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Bumblebee', value='bumblebee', cls='btn theme-controller join-item')
                     )
                 )
             ),
-
             ## magnifying glass
             Button(cls='btn btn-ghost btn-circle')(
                 Svg(xmlns='http://www.w3.org/2000/svg', fill='none', viewbox='0 0 24 24', stroke='currentColor', cls='h-5 w-5')(
                     Path(stroke_linecap='round', stroke_linejoin='round', stroke_width='2', d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z')
                 )
             ),
-            
-            ### avatar
+            ## avatar
             Div(cls='dropdown dropdown-end')(
                 Label(tabindex='0', cls='btn btn-ghost btn-circle avatar')(
                     Div(cls='w-10 rounded-full')(

@@ -1,56 +1,110 @@
+"""
+KPI Dimensions Reference
+------------------------
+
+This table will capture daily KPI measurements broken down
+along each of the dimensions you described.  Each row has:
+
+  • date       – ISO date string
+  • kpi        – one of: revenue, expenses, new_users, returning_users
+  • dimension  – the dimension name (e.g. “Sales Channel”)
+  • category   – the category within that dimension (e.g. “online”)
+  • value      – the generated metric value
+
+"""
+
 import sqlite3
 from datetime import datetime, timedelta
 import random
+from tqdm import tqdm
+from components.relationships import KPI_DIMENSIONS
 
-def create_and_populate_database(db_path: str = "test_metrics.db", num_days: int = 365):
+def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int = 365):
+    """
+    Creates an 'events' table and populates it with synthetic
+    KPI data for each date, KPI, and dimension/category,
+    then computes & inserts profit and total_users via SQL.
+    """
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    cur  = conn.cursor()
 
-    # Drop table if exists for a clean setup
-    cursor.execute("DROP TABLE IF EXISTS events")
-
-    # Create the events table
-    cursor.execute("""
+    # 1) Drop & recreate
+    cur.execute("DROP TABLE IF EXISTS events")
+    cur.execute("""
         CREATE TABLE events (
-            date TEXT PRIMARY KEY,
-            gross_revenue REAL,
-            expenses REAL,
-            profit REAL,
-            users INTEGER,
-            new_users INTEGER,
-            returning_customers INTEGER,
-            impressions INTEGER,
-            traffic INTEGER,
-            buzz REAL
+            date      TEXT,
+            kpi       TEXT,
+            dimension TEXT,
+            category  TEXT,
+            value     REAL
         )
     """)
-    
-    # Populate the table with dummy daily data over the last `num_days`
-    today = datetime.now().date()
-    for i in range(num_days):
-        current_date = today - timedelta(days=i)
-        revenue = round(random.uniform(100, 10), 2)
-        expenses = round(revenue * random.uniform(0.5, 0.9), 2)
-        users = random.randint(100, 1000)
-        new_users = random.randint(10, 20)
-        returning_customers = random.randint(20, 50)
-        impressions = random.randint(20, 50)
-        traffic = random.randint(20, 50)
-        buzz = round(random.uniform(500, 200), 2)
-        
-        profit = revenue - expenses
-        cursor.execute(
-            """
-            INSERT INTO events (date, gross_revenue, expenses, profit, users, new_users, returning_customers, impressions, traffic, buzz)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (current_date.isoformat(), revenue, expenses, profit, users, new_users, returning_customers, impressions, traffic, buzz),
-        )
+
+    today      = datetime.now().date()
+    start_date = today - timedelta(days=num_days - 1)
+    total_rows = 0
+
+    # 2) Populate base KPIs
+    for day_offset in tqdm(range(num_days)):
+        day     = start_date + timedelta(days=day_offset)
+        iso_day = day.isoformat()
+
+        for kpi, dims in KPI_DIMENSIONS.items():
+            if kpi in ['profit','users']:
+                continue
+            for dim_name, categories in dims.items():
+                for cat in categories:
+                    if kpi == 'revenue':
+                        val = round(random.uniform(2000, 8000), 2)
+                    elif kpi == 'expenses':
+                        val = round(random.uniform(1000, 5000), 2)
+                    elif kpi == 'new_users':
+                        val = random.randint(20, 200)
+                    elif kpi == 'returning_users':
+                        val = random.randint(10, 150)
+                    else:
+                        val = round(random.uniform(0, 100), 2)
+
+                    cur.execute(
+                        "INSERT INTO events (date, kpi, dimension, category, value) VALUES (?, ?, ?, ?, ?)",
+                        (iso_day, kpi, dim_name, cat, val)
+                    )
+                    total_rows += 1
+
+    # 3) Derive profit & total_users in SQL
+    cur.executescript("""
+        -- profit = sum(revenue) - sum(expenses) per day
+        INSERT INTO events (date, kpi, dimension, category, value)
+        SELECT
+          date,
+          'profit'      AS kpi,
+          NULL          AS dimension,
+          NULL          AS category,
+          SUM(CASE WHEN kpi='revenue' THEN value ELSE 0 END)
+          - SUM(CASE WHEN kpi='expenses' THEN value ELSE 0 END) AS value
+        FROM events
+        GROUP BY date;
+
+        -- total_users = sum(new_users) + sum(returning_users) per day
+        INSERT INTO events (date, kpi, dimension, category, value)
+        SELECT
+          date,
+          'users' AS kpi,
+          NULL          AS dimension,
+          NULL          AS category,
+          SUM(CASE WHEN kpi='new_users'     THEN value ELSE 0 END)
+          + SUM(CASE WHEN kpi='returning_users' THEN value ELSE 0 END) AS value
+        FROM events
+        GROUP BY date;
+    """)
+    # each INSERT adds one row per date
+    total_rows += 2 * num_days
+
+    # 4) Commit & close
     conn.commit()
     conn.close()
-    print(
-        f"Database created and populated with {num_days} days of test data at: {db_path}"
-    )
 
-# Run it
-# create_and_populate_database("test_metrics.db", num_days = 2000)
+    print(f"Populated {db_path!r} with {total_rows} event rows over {num_days} days.")
+
+# Example: generate two years of data
+create_and_populate_events(num_days=2000)

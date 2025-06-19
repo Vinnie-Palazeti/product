@@ -3,35 +3,40 @@ from uuid import uuid4
 from pyecharts.charts import Line, Grid
 import pyecharts.options as opts
 from pyecharts.commons.utils import JsCode
-from pyecharts.charts import Calendar
-from pyecharts.faker import Faker
-from pyecharts.charts import Bar
-import datetime
-import random
+from components.relationships import UNIT_FIELDS
+from components.svg import SVG_MAP
+import numpy as np    
 
-area_color_js = (
-    "new echarts.graphic.LinearGradient(0, 0, 0, 1, "
-    "[{offset: 0, color: 'rgb(255, 158, 68)'}, {offset: 1, color: 'rgb(255, 70, 131)'}], false)"
-)
-2
-find_color=JsCode("""
-function colorFromTheme(cssVarName = '--color-primary') {
-      const cssVal = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
-      const parsed = culori.parse(cssVal);
-      const rgb = culori.formatRgb(parsed);
-      console.log(`Converted ${cssVarName}:`, rgb); // e.g. "rgb(59, 130, 246)"
-      return rgb;
-    }
-""")
+def calculate_manual_ticks(min_val, max_val, num_ticks=5):
+    """Calculate manual tick positions based on data range"""
+    
+    # Create evenly spaced tick positions
+    tick_positions = np.linspace(min_val, max_val, num_ticks)
+    
+    # Round to nice numbers
+    tick_positions = [round(tick) for tick in tick_positions]
+    
+    return tick_positions    
 
+def format_tick(val):
+    if val >= 10000:
+        return f"{val // 1000}K"  # No decimals for 10K+
+    elif val >= 1000:
+        return f"{val / 1000:.1f}K".rstrip('0').rstrip('.')  # Decimals for 1K-10K
+    return str(val)
+    
+def format_ticks(manual_ticks):
+    ticks = '\n'.join([f"if (isClose(value, {i})) return '{format_tick(i)}';" for i in manual_ticks])    
+    return JsCode(f"""
+        function (value) {{
+            const isClose = (a, b, tolerance = 1) => Math.abs(a - b) <= tolerance;
+            {ticks}
+            return '';
+        }}
+    """)   
+        
 
-
-### need to manually set tick bars..
-## I could probably compute the primary color BEFORE I send it here.. using jscript from fasthml.. then pass it here
-## also need to somehow make everything the same character length...
-## 100, 1000, 10000... etc
-
-def line_chart(x, y, show_label=False, line_color=None):
+def line_chart(x, y, show_label=False):
     ## need to add x axis first.
     c = (
         Line()
@@ -42,8 +47,15 @@ def line_chart(x, y, show_label=False, line_color=None):
     if isinstance(y, tuple):
         y_compare = y[-1] ## comparison period
         y=y[0] ## selected period
+        ## format again (still getting weirdly rounded numbers?)
+        y = [round(i,2) for i in y]
+        y_compare = [round(i,2) for i in y_compare]
+        ## get minimum and maximum for ticks
+        min_=round(min(y + y_compare)*0.95)         
+        max_=round(max(y + y_compare)*1.05)  
+        manual_ticks = calculate_manual_ticks(min_,max_,4)    
         
-        ## add comparion period
+        ## add comparion period to line chart
         c = (
             c
             .add_yaxis(
@@ -53,9 +65,15 @@ def line_chart(x, y, show_label=False, line_color=None):
                 is_symbol_show=False,
                 label_opts=opts.LabelOpts(is_show=False, color='rgb(68, 158, 255)'),
                 linestyle_opts=opts.LineStyleOpts(color="rgb(68, 158, 255)"),
-                itemstyle_opts=opts.ItemStyleOpts(color="rgb(68, 158, 255)"),            
+                itemstyle_opts=opts.ItemStyleOpts(color="rgb(68, 158, 255)")          
             )
         )
+    else:
+        y = [round(i,2) for i in y]
+        min_=round(min(y)*0.98)         
+        max_=round(max(y)*1.02)
+        manual_ticks = calculate_manual_ticks(min_,max_,4)
+
     c = (
         c       
         .add_yaxis(
@@ -65,11 +83,7 @@ def line_chart(x, y, show_label=False, line_color=None):
             is_symbol_show=False,
             label_opts=opts.LabelOpts(is_show=False, color='rgb(255, 158, 68)'),
             linestyle_opts=opts.LineStyleOpts(color="rgb(255, 158, 68)"),
-            itemstyle_opts=opts.ItemStyleOpts(color="rgb(255, 158, 68)"),
-                        
-            # linestyle_opts=opts.LineStyleOpts(color='--color-accent'),
-            # areastyle_opts=opts.AreaStyleOpts(opacity=0.5),
-            # areastyle_opts=opts.AreaStyleOpts(color=JsCode(area_color_js), opacity=0.3),
+            itemstyle_opts=opts.ItemStyleOpts(color="rgb(255, 158, 68)")
         )
         .set_global_opts(         
             tooltip_opts=opts.TooltipOpts(
@@ -78,7 +92,7 @@ def line_chart(x, y, show_label=False, line_color=None):
                     position='top',
                     textstyle_opts=opts.TextStyleOpts(color="#ffffff"),  # Text color
                     background_color="rgba(50, 50, 50, 0.7)"  # Background color
-                ),                               
+            ),                               
             xaxis_opts=opts.AxisOpts(
                 # formatter
                 position='top',
@@ -86,24 +100,24 @@ def line_chart(x, y, show_label=False, line_color=None):
                 type_="category",
                 axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
                 # boundary_gap=False,
-                axislabel_opts=opts.LabelOpts(
-                    formatter=JsCode("function(value, index){if (index === 0) {return '';} return value;}"),
-                    is_show=show_label),
+                axislabel_opts=opts.LabelOpts(formatter=JsCode("function(value, index){if (index === 0) {return '';} return value;}"), is_show=show_label),
                 axisline_opts=opts.AxisLineOpts(is_show=False),
                 axistick_opts=opts.AxisTickOpts(is_show=False),
                 splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),
             ),
             yaxis_opts=opts.AxisOpts(
-                # interval=30,
+                min_=min_,          
+                max_=max_,   
                 position='right',
                 # is_inverse=True,
                 type_="value",
                 # axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
-                axislabel_opts=opts.LabelOpts(is_show=True),
+                interval=round((max(manual_ticks) - min(manual_ticks)) / (len(manual_ticks) - 1)),
+                axislabel_opts=opts.LabelOpts(is_show=True, formatter=format_ticks(manual_ticks)),                
                 axisline_opts=opts.AxisLineOpts(is_show=False),
                 axistick_opts=opts.AxisTickOpts(is_show=False),
                 splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),                
-            ),
+            )
         )
     )
     
@@ -123,12 +137,19 @@ def line_chart(x, y, show_label=False, line_color=None):
     return c
 
 
+# primary --color-primary	Primary brand color, The main color of your brand
+# primary-content	--color-primary-content	Foreground content color to use onprimarycolor
+
+# secondary	--color-secondary	Secondary brand color, The optional, secondary color of your brand
+# secondary-content	--color-secondary-content    
+# https://daisyui.com/docs/colors/
+
 def embed_chart(chart):
     # needs to be unique, but don't really need it after this
     chart_id = f'{uuid4()}' 
     chart_name = str(chart_id).replace("-","")
     options = chart if isinstance(chart,str) else chart.dump_options()
-    chart_script = Script(f"""
+    chart_script = Script(f"""                          
         var chart_{chart_name} = echarts.init(document.getElementById('{chart_id}'), 'white', {{renderer: 'canvas'}});
         var option_{chart_name} = {options};
         chart_{chart_name}.setOption(option_{chart_name});
@@ -137,14 +158,51 @@ def embed_chart(chart):
         if (!window.chartRegistry) {{
             window.chartRegistry = [];
         }}
+
+        function cssOklchToRgb(cssVarName) {{
+            // Step 1: Read OKLCH string from CSS variable
+            const oklchStr = getComputedStyle(document.body).getPropertyValue(cssVarName).trim();
+
+            // Step 2: Parse OKLCH string like: oklch(45% .24 277.023)
+            const match = oklchStr.match(/oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)/);
+
+            const [, lStr, cStr, hStr] = match;
+            const l = parseFloat(lStr) / 100;
+            const c = parseFloat(cStr);
+            const h = parseFloat(hStr);
+
+            // Step 3: Convert OKLCH to RGB (you must define this function somewhere)
+            const rgb = oklch2rgb([l, c, h]);
+
+            // Step 4: Clamp to [0, 1] and scale to [0, 255]
+            const rgb255 = rgb.map(c => Math.round(Math.max(0, Math.min(1, c)) * 255));
+
+            // Step 5: Format as CSS rgb() string
+            return `rgb(${{rgb255[0]}}, ${{rgb255[1]}}, ${{rgb255[2]}})`;
+        }}     
+        
+        var rgbPrim = cssOklchToRgb('--color-primary');
+        var rgbSec = cssOklchToRgb('--color-secondary');
+        
+        console.log(rgbPrim);
+        console.log(rgbSec);
+
+        chart_{chart_name}.setOption({{
+            color: [rgbPrim, rgbSec],  // extend as needed
+            series: chart_{chart_name}.getOption().series.map((s, i) => ({{
+                ...s,
+                lineStyle: {{ color: i === 0 ? rgbPrim : rgbSec }},
+                itemStyle: {{ color: i === 0 ? rgbPrim : rgbSec }}
+            }}))
+        }});                 
         
         window.chartRegistry.push(chart_{chart_name});
-        
         echarts.connect(window.chartRegistry);    
         
         window.addEventListener('resize', function() {{
             chart_{chart_name}.resize();
-        }});         
+        }});
+        
     """)
     return chart_id, chart_script, chart_name
 
@@ -152,443 +210,120 @@ def embed_line_chart(x, y, show_label, cls='w-full h-full'): #
     c = embed_chart(line_chart(x, y, show_label))
     return Div(c[1], id=c[0], cls=cls)
 
+## remove decimals if over 1k
+def format_metric(value, dollar):
+    if dollar:
+        if value >= 1000:
+            return f'${value:,.0f}'
+        else:
+            return f'${value:,.2f}'
+    else:
+        return f'{value:,.0f}'
 
-def bar_row(n,v,p,s,top:bool=False):
+def stat(name:str, value, dollar:bool = True, comparison=None):
+    if comparison:
+        pct_chng = (value - comparison) / value * 100
     return (
-        Tr(cls=f"h-4 group {'border-t border-gray-200' if top else ''}")(
+        ## h-[100px] could set the height based on position (1st being taller to make up for top labels) to make then more equal
+        ## set the max height of the article to stop the stat + line chart from getting way to large 
+        Article(cls="relative p-6 col-span-1 group bg-base-100 hover:bg-base-200 transition-colors duration-200 max-h-24", id=f'stat-{name}')(
+            Div(cls="absolute top-1 right-1 text-base-600 opacity-0 group-hover:opacity-100 transition-opacity duration-1000")(              
+                Div(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200', 
+                    hx_post='/remove-metric', hx_target=f'#metric-container-{name}', hx_swap='outerHTML', hx_vals=dict(field=name),
+                    id=f'#stat-{name}-x')(
+                        SVG_MAP.get("x")
+                    )
+            ),
+            Div(cls="absolute top-1 right-7 text-base-600 opacity-0 group-hover:opacity-100 transition-opacity duration-1000")(
+                Div(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200')(
+                    SVG_MAP.get("visit")
+                )
+            ),                     
+            Div(cls="flex items-center justify-between")(
+                Div()(
+                    P(name.replace('_',' ').title(), cls="text-sm text-base-content"),
+                    P(format_metric(value, dollar), 
+                    cls="text-2xl font-medium text-primary"),
+                ),
+                Span(cls="text-secondary mt-5")(SVG_MAP.get(name)), # removed the numbers
+            ),
+            None if not comparison else 
+            Div(cls=f"mt-1 flex gap-1 text-{'success' if pct_chng >=0 else 'error'}")(
+                SVG_MAP.get('increase') if pct_chng >= 0  else SVG_MAP.get('decrease'),
+                P(cls="flex gap-2 text-xs")(Span(f"{pct_chng:,.2f}%", cls="font-medium")),
+            )
+        )
+    )
+
+def stat_chart(name, timeseries, totals, show_label):    
+    dates = [i.get('date') for i in timeseries.get('selected_period')]
+    y = [i.get(name) for i in timeseries.get('selected_period')]
+    if 'comparison_period' in timeseries:
+        y = (
+            y, # main data
+            [i.get(name) for i in timeseries.get('comparison_period')], # comparison
+        )
+    c = embed_line_chart(x=dates, y=y, show_label=show_label)
+    return (
+        Div(id=f'metric-container-{name}', cls="contents")( ## this is a wrapper. display:contents -> element itself disappears and children styling  & layout is displayed
+        stat(
+            name=name, value=totals.get('selected_period').get(name), 
+            dollar=name not in UNIT_FIELDS, 
+            comparison=totals.get('comparison_period').get(name) if isinstance(y, tuple) else False ## this should still work
+        ), 
+        Div(c, cls="col-span-2", id=f'{name}-chart'))
+    )
+    
+def bar_row(name, value, perc_change, perc_width, top:bool=False):
+    if perc_change:
+        fmt_change = f'{perc_change:,.0f}%'
+    else:
+        fmt_change='-'
+    return (
+        Tr(cls=f"h-4 group {'border-t border-primary-200' if top else ''}")(
             Td(colspan='2', cls='px-0 py-0 relative overflow-hidden')(
-                Div(style=f'width: {s}%', cls='absolute inset-0 bg-secondary/80 z-0 h-full animate-grow-bar transition-transform duration-300 group-hover:scale-[1.02] group-hover:bg-secondary/70'),
+                Div(style=f'width: {perc_width}%', cls='absolute inset-0 bg-primary/20 z-0 h-full animate-grow-bar transition-transform duration-300 group-hover:scale-[1.10] group-hover:bg-primary/20'),
                 Div(cls='flex justify-between items-center px-4 py-0 relative z-10 h-full')(
-                    Span(n),
-                    Span(v, cls='text-right')
+                    Span(name),
+                    Span(value, cls='text-right')
                 )
             ),
-            Td(p, cls='px-4 py-0 text-right text-red-500')
+            Td(fmt_change, cls=f'px-4 py-0 text-right text-{'red' if perc_change else 'black'}-500')
         )
-    )  
-
-def bar(metric:str, grp:str):
-    data = [('Zoom', '$123.1K', '-13%', 60), ('Spotify', '$50.2K', '+15%', 18), ('Jira', '$44.8K', '-2%', 10), ('Asana', '$20.2K', '+10%', 8)]
+    )
+    
+def pivot_by_category(rows, dim):
+    return {
+        row['category']: {k: v for k, v in row.items() if k != 'category'}
+        for row in rows
+        if row.get('dimension') == dim
+    }
+    
+def bar_chart(data, kpi:str=None, dim:str=None):
+    chart_data=pivot_by_category(rows=data.get('selected_period'), dim=dim)
+    if 'comparison_period' in data:
+        comp_data = pivot_by_category(rows=data.get('comparison_period'), dim=dim)
+        for cat in chart_data.keys():
+            current_val = chart_data.get(cat).get('total_value')
+            comp_val = comp_data.get(cat).get('total_value')
+            pct_change = ((current_val - comp_val) / current_val) * 100
+            chart_data[cat].update({'perc_change': pct_change})
     return (
-        Table(cls='w-full text-sm text-left table-fixed border-collapse')(
-            Thead()(
-                Tr(
-                    Th(f'{metric} by {grp}', cls='px-0 py-2 w-1/2'),
-                    Th('#', cls='px-6 py-2 text-right w-1/3'),
-                    Th('Δ%', cls='px-6 py-2 text-right w-1/6')
-                )
-            ),
-            Tbody()(*[bar_row(n=row[0], v=row[1], p=row[2], s=row[3], top=1 if j==0 else None) for j,row in enumerate(data)])
+        Div(cls='col-span-2')(
+            Table(cls='w-full text-sm text-left table-fixed border-collapse')(
+                Thead()(
+                    Tr(
+                        Th(f'{dim}', cls='px-0 py-2 w-1/2'),
+                        Th('#', cls='px-6 py-2 text-right w-1/3'),
+                        Th('Δ%', cls='px-6 py-2 text-right w-1/6')
+                    )
+                ),
+                Tbody()(*[bar_row(name=nm, 
+                                  value=format_metric(value=row.get('total_value'), dollar=kpi not in UNIT_FIELDS), 
+                                  perc_change=row.get('perc_change'),
+                                  perc_width=round((row.get('total_value')/row.get('dimension_total'))*100), 
+                                  top=1 if j==0 else None) 
+                          for j,(nm, row) in enumerate(chart_data.items())])
+            )
         )
     )
-
-
-
-
-import random
-import datetime
-from pyecharts import options as opts
-from pyecharts.charts import Calendar
-
-# Create the date list with lunar calendar data and solar terms
-date_list = [
-  ['2017-3-1', '初四'],
-  ['2017-3-2', '初五'],
-  ['2017-3-3', '初六'],
-  ['2017-3-4', '初七'],
-  ['2017-3-5', '初八', '驚蟄'],
-  ['2017-3-6', '初九'],
-  ['2017-3-7', '初十'],
-  ['2017-3-8', '十一'],
-  ['2017-3-9', '十二'],
-  ['2017-3-10', '十三'],
-  ['2017-3-11', '十四'],
-  ['2017-3-12', '十五'],
-  ['2017-3-13', '十六'],
-  ['2017-3-14', '十七'],
-  ['2017-3-15', '十八'],
-  ['2017-3-16', '十九'],
-  ['2017-3-17', '二十'],
-  ['2017-3-18', '廿一'],
-  ['2017-3-19', '廿二'],
-  ['2017-3-20', '廿三', '春分'],
-  ['2017-3-21', '廿四'],
-  ['2017-3-22', '廿五'],
-  ['2017-3-23', '廿六'],
-  ['2017-3-24', '廿七'],
-  ['2017-3-25', '廿八'],
-  ['2017-3-26', '廿九'],
-  ['2017-3-27', '三十'],
-  ['2017-3-28', '三月'],
-  ['2017-3-29', '初二'],
-  ['2017-3-30', '初三'],
-  ['2017-3-31', '初四']
-]
-
-# Prepare data in the format needed by pyecharts
-heatmap_data = []
-lunar_data = []
-solar_term_data = []
-
-# Process the date list to create the necessary data structures
-for item in date_list:
-    date_str = item[0]
-    lunar_day = item[1]
-    
-    # Add random rainfall data for heatmap (as in the original)
-    rainfall = random.random() * 300
-    heatmap_data.append([date_str, rainfall])
-    
-    # Add lunar calendar day data
-    lunar_data.append([date_str, lunar_day])
-    
-    # Add solar term data if present
-    if len(item) > 2:
-        solar_term_data.append([date_str, item[2]])
-
-# # Create the calendar chart
-# calendar = Calendar()
-
-# # Add heatmap data series for rainfall
-# calendar.add(
-#     series_name="降雨量",
-#     yaxis_data=heatmap_data,
-#     calendar_opts=opts.CalendarOpts(
-#         pos_left="center",
-#         pos_top="middle",
-#         range_="2017-03",  # Show only March 2017 as in original
-#         cell_size=["50", "50"],
-#         orient="vertical",
-#         yearlabel_opts=opts.CalendarYearLabelOpts(is_show=False),
-#         daylabel_opts=opts.CalendarDayLabelOpts(
-#             first_day=1,  # Monday as first day
-#             name_map="cn"  # Chinese day names
-#         ),
-#         monthlabel_opts=opts.CalendarMonthLabelOpts(is_show=False)
-#     )
-# )
-
-
-
-# # Add scatter series for lunar calendar days
-# calendar.add(
-#     series_name="",
-#     yaxis_data=lunar_data,
-#     type_="scatter",
-#     symbol_size=0,  # Invisible scatter points
-#     label_opts=opts.LabelOpts(
-#         is_show=True,
-#         position="inside",
-#         color="#000"
-#     ),
-#     is_silent=True
-# )
-
-# # Add scatter series for solar terms
-# calendar.add(
-#     series_name="",
-#     yaxis_data=solar_term_data,
-#     type_="scatter",
-#     symbol_size=0,  # Invisible scatter points
-#     label_opts=opts.LabelOpts(
-#         is_show=True,
-#         position="inside",
-#         font_size=14,
-#         font_weight="bold",
-#         color="#a00"
-#     ),
-#     is_silent=True
-# )
-
-# # Set global options
-# calendar.set_global_opts(
-#     visualmap_opts=opts.VisualMapOpts(
-#         is_show=False,
-#         max_=300,
-#         min_=0,
-#         range_color=["#e0ffff", "#006edd"],
-#         orient="horizontal",
-#         pos_left="center",
-#         pos_bottom=20,
-#         range_opacity=0.3
-#     ),
-# )
-
-# Create the calendar chart
-calendar = Calendar()
-
-# Add heatmap data series for rainfall
-calendar.add(
-    series_name="降雨量",
-    yaxis_data=heatmap_data,
-    type_="effectScatter",  # Changed from heatmap to effectScatter
-    symbol_size=JsCode("""
-        function(val) {
-            return val[1] / 40;
-        }
-    """),
-    effect_opts=opts.EffectOpts(
-        is_show=True,
-        brush_type="fill",
-        scale=3.5,
-        period=4,
-    ),
-    calendar_opts=opts.CalendarOpts(
-        pos_left="center",
-        pos_top="middle",
-        range_="2017-03",  # Show only March 2017 as in original
-        cell_size=["50", "50"],
-        orient="vertical",
-        yearlabel_opts=opts.CalendarYearLabelOpts(is_show=False),
-        daylabel_opts=opts.CalendarDayLabelOpts(
-            first_day=1,  # Monday as first day
-            name_map="en"  # Chinese day names
-        ),
-        monthlabel_opts=opts.CalendarMonthLabelOpts(is_show=False)
-    )
-)
-
-# Add scatter series for lunar calendar days
-calendar.add(
-    series_name="",
-    yaxis_data=lunar_data,
-    type_="scatter",
-    symbol_size=0,  # Invisible scatter points
-    label_opts=opts.LabelOpts(
-        is_show=True,
-        position="inside",
-        color="#000"
-    ),
-    is_silent=True
-)
-
-# Add scatter series for solar terms
-calendar.add(
-    series_name="",
-    yaxis_data=solar_term_data,
-    type_="scatter",
-    symbol_size=0,  # Invisible scatter points
-    label_opts=opts.LabelOpts(
-        is_show=True,
-        position="inside",
-        font_size=14,
-        font_weight="bold",
-        color="#a00"
-    ),
-    is_silent=True
-)
-
-# Set global options
-calendar.set_global_opts(
-    visualmap_opts=opts.VisualMapOpts(
-        is_show=False,
-        max_=100,
-        min_=0,
-        range_color=["#e0ffff", "#006edd"],
-        orient="horizontal",
-        pos_left="center",
-        pos_bottom=20,
-        range_opacity=0.3
-    ),
-)
-
-
-def calendar_chart():
-    return calendar
-
-
-
-# def bar_chart():
-#     return """{
-#     grid: {
-#         top: 50,            // space for headers
-#         bottom: 0,
-#         left: 0,
-#         right: 90,          // extra space for Growth column
-#         containLabel: false
-#     },
-#     tooltip: { show: false },
-#     legend: { show: false },
-#     xAxis: {
-#         type: "value",
-#         show: false,
-#         max: 630230
-#     },
-#     yAxis: [
-#         {
-#             type: "category",
-#             data: ["Brazil", "Indonesia", "USA", "India", "China", "World"],
-#             position: "left",
-#             axisLabel: { color: "#000", inside: true },
-#             axisTick: { show: false },
-#             axisLine: { show: false }
-#         },
-#         {
-#             type: "category",
-#             data: [18203, 23489, 29034, 104970, 131744, 630230],
-#             position: "right",
-#             axisLabel: { color: "#000" },
-#             axisTick: { show: false },
-#             axisLine: { show: false }
-#         },
-#         {
-#             type: "category",
-#             data: ["+2%", "+3%", "+1%", "+4%", "+5%", "+6%"],
-#             position: "right",
-#             offset: 50, // shift further right
-#             axisLabel: {
-#                 color: "#000",
-#                 align: "left",
-#                 fontWeight: "normal"
-#             },
-#             axisTick: { show: false },
-#             axisLine: { show: false }
-#         }
-#     ],
-#     series: [
-#         {
-#             name: "Population",
-#             type: "bar",
-#             data: [18203, 23489, 29034, 104970, 131744, 630230],
-#             barCategoryGap: "0%",
-#             barGap: "0%",
-#             itemStyle: {
-#                 color: {
-#                     type: "linear",
-#                     x: 0,
-#                     y: 0,
-#                     x2: 1,
-#                     y2: 0,
-#                     colorStops: [
-#                         { offset: 0, color: "#008D8E" },
-#                         { offset: 1, color: "#24C1C3" }
-#                     ]
-#                 },
-#                 borderRadius: 4
-#             }
-#         },
-#         {
-            
-#             type: "bar",
-#             data: [0, 0, 0, 0, 0, 0],
-#             yAxisIndex: 2, // third y-axis
-#             xAxisIndex: 0,
-#             barWidth: 1,
-#             itemStyle: { color: "transparent" },
-#             label: {
-#                 show: true,
-#                 position: "right",
-#                 formatter: (params) => {
-#                     const growth = ["+2%", "+3%", "+1%", "+4%", "+5%", "+6%"];
-#                     return growth[params.dataIndex];
-#                 },
-#                 color: "#000",
-#                 fontSize: 12
-#             }
-#         }
-#     ],
-#     graphic: [
-#         {
-#             type: "text",
-#             left: 10,
-#             top: 10,
-#             style: {
-#                 text: "Country",
-#                 fontSize: 14,
-#                 fill: "#000",
-#                 fontWeight: "bold"
-#             }
-#         },
-#         {
-#             type: "text",
-#             right: 80,
-#             top: 10,
-#             style: {
-#                 text: "#",
-#                 fontSize: 14,
-#                 fill: "#000",
-#                 fontWeight: "bold"
-#             }
-#         },
-#         {
-#             type: "text",
-#             right: 20,
-#             top: 10,
-#             style: {
-#                 text: "Growth",
-#                 fontSize: 14,
-#                 fill: "#000",
-#                 fontWeight: "bold"
-#             }
-#         }
-#     ]
-# }
-
-#     """
-
-
-# def embed_bar_chart(cls='w-full h-full'):
-#     c=embed_chart(bar_chart())
-#     return Div(c[1], id=c[0], cls=cls), c[2]  
-
-
-
-
-
-
-
-# def calendar_chart():
-#     begin = datetime.date(2017, 1, 1)
-#     end = datetime.date(2017, 1, 31)
-#     data = [
-#         [str(begin + datetime.timedelta(days=i)), random.randint(1000, 25000)]
-#         for i in range((end - begin).days + 1)
-#     ]
-    
-#     print(data)
-
-#     c = (
-#         Calendar()
-#         .add(
-#             "",
-#             data,
-#             calendar_opts=opts.CalendarOpts(
-#                 range_="2017-01",
-#                 daylabel_opts=opts.CalendarDayLabelOpts(),
-#                 monthlabel_opts=opts.CalendarMonthLabelOpts(),
-#             ),
-#         )
-#         .set_global_opts(
-#             # title_opts=opts.TitleOpts(title="Calendar-2017年微信步数情况(中文 Label)"),
-#             visualmap_opts=opts.VisualMapOpts(
-#                 max_=20000,
-#                 min_=500,
-#                 orient="horizontal",
-#                 is_piecewise=True,
-#                 pos_top="230px",
-#                 pos_left="100px",
-#             ),
-#         )
-#     )
-    
-#     c = (
-#         Grid()
-#         .add(
-#             c,
-#             grid_opts=opts.GridOpts(
-#                 pos_top="10%",
-#                 pos_left="0%",
-#                 pos_right="2%",
-#                 pos_bottom="5%",            
-#                 is_contain_label=True
-#             )
-#         )
-#     )      
-#     return c
-    
-def embed_calendar_chart(cls='w-full h-full'):
-    c=embed_chart(calendar_chart())
-    return Div(c[1], id=c[0], cls=cls), c[2]  
-
-
-

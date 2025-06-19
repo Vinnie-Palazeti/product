@@ -15,7 +15,6 @@ plus=Svg(
     stroke_linejoin='round'
 )
 
-
 cash = Svg(
     cls="inline-block h-8 w-8 stroke-current dark:text-white",
     aria_hidden="true",
@@ -174,12 +173,12 @@ SVG_MAP = {
     "new_users":new_user,
     "buzz": buzz,    
     "expenses": banknote_x,
-    "gross_revenue": cash,
+    "revenue": cash,
     "profit": money,
     'increase':up_arrow,
     'decrease':down_arrow,
     'x':x,
     'visit':visit,
-    'returning_customers':ret_user,
+    'returning_users':ret_user,
     'traffic':traffic
 }
