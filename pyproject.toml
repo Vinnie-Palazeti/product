@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.3.0",
     "pyecharts>=2.0.7",
-    "python-fasthtml>=0.12.15",
+    "python-fasthtml>=0.12.20",
     "ruff>=0.11.8",
     "tqdm>=4.67.1",
 ]

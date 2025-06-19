@@ -6,7 +6,7 @@ from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import * 
 
-# from db import *
+from db import *
 
 # create_and_populate_database("test_metrics.db", num_days = 2000)
 ## I think to handle the min width stuff I need to just format the grid columns
@@ -34,10 +34,6 @@ headers = [
 
     Style("""
 
-        body {
-            background-color: var(--my-color);
-        }   
-        
         .sidebar {
             width: 250px;
             transition: width 0.3s ease;
@@ -93,19 +89,27 @@ headers = [
         .no-left-padding,
         .no-left-padding * {
             padding-left: 0 !important;
-        }        
+        }  
+              
     """)   
 ]
 
-app, rt = fast_app(hdrs=headers, default_hdrs=False, live=True, htmlkw={"data-theme": "light"} )
-# app = FastHTML(title='Themes', hdrs=headers, default_hdrs=False)
+app, rt = fast_app(
+    title='IndyStats',
+    hdrs=headers, 
+    default_hdrs=False, 
+    live=True, 
+    htmlkw={"data-theme": "light"} 
+)
+
+
+# app = FastHTML(title='Themes', hdrs=headers, default_hdrs=False, htmlkw={"data-theme": "light"} )
 # rt = app.route
 
 @rt("/{fname:path}.{ext:static}")
 def get(fname: str, ext: str):
     return FileResponse(f"{fname}.{ext}")
     
-
 def render_content(content: DashContent, hx_swap:str=None):
     ## get all data
     data = get_data(
@@ -116,16 +120,14 @@ def render_content(content: DashContent, hx_swap:str=None):
     )
     ## summarize data
     totals = calculate_totals(results=data)
-    if not content.bar_dims:
-        setattr(content,'bar_dims', list(KPI_DIMENSIONS.get(content.bar_kpi).keys()))
     ## get bar chart data.
-    bar_data = get_bar_data(kpi=content.bar_kpi, dimension_list=content.bar_dims, time_period=content.time, comparison_type=content.comparison, period_type=content.group)
+    bar_data = get_bar_data(kpi=content.bar_kpi, dimension_list=None, time_period=content.time, comparison_type=content.comparison, period_type=content.group)
     ## format stat + line charts
     stat_charts = [stat_chart(name=f, timeseries=data, totals=totals, show_label=True if n==0 else False) for n, f in enumerate(content.fields)]
     ## format bar charts
-    bar_charts = [bar_chart(dim=dim, data=bar_data, kpi=content.bar_kpi) for dim in content.bar_dims]
+    bar_charts = [bar_chart(dim=dim, data=bar_data, kpi=content.bar_kpi) for dim in list(KPI_DIMENSIONS.get(content.bar_kpi).keys())] ## using default dimensions
     return Div(cls="grid grid-cols-2 gap-4 items-start", id='stat-chart-container', hx_swap_oob=hx_swap)(
-        Div(cls="grid grid-cols-3", id='stat-chart-content')(*[c for c in stat_charts]),
+        Div(cls="grid grid-cols-3 gap-y-2", id='stat-chart-content')(*[c for c in stat_charts]),
         Div(cls="grid grid-cols-4 gap-y-30 gap-x-10", id='bar-chart-content')(*[c for c in bar_charts])
     )
     
@@ -152,7 +154,6 @@ def post(field:str, group:str, time:str, comparison:str, fields:list[str]):
 ## removes stat and line chart
 @rt("/remove-metric")
 def post(field:str, fields:list[str]):
-    
     # format KPI button for OOB swap
     but = Template()(
         Li(A(field.replace('_', ' ').title(), 
@@ -169,31 +170,6 @@ def post(field:str, fields:list[str]):
     # return None, which swaps the stat line combo for nothing (i.e. removes it)
     # swap oob the button and current fields value
     return None, but, Input(type='hidden', name='fields', value=fields_values, id='fields-value', hx_swap_oob='outerHTML')
-
-@rt("/")
-def get():
-    ## load defaults for user/session
-    ## DashContent()
-    content = DashContent()
-    return Body(cls="min-h-screen")(
-        sidebar(),
-        top_navbar(),
-        Script(src="/static/js/oklch-rgb.js"),
-        ############ main ############
-        Form()(
-            Div(cls="main-content min-h-screen expanded p-5")(
-                options_bar(),
-                metrics_select(content.fields),
-                render_content(content),
-            ),
-            Input(type='hidden', name='comparison', value=content.comparison, id='comparison-value'),
-            Input(type='hidden', name='time', value=content.time, id='time-value'),
-            Input(type='hidden', name='group', value=content.group, id='group-value'),
-            Input(type='hidden', name='fields', value=content.fields, id='fields-value'), # default fields
-        ),
-        Script(src="/static/js/collapse.js"),
-        Script(src="/static/js/chart-color.js")
-    )
 
 @rt("/options-input")
 def post(content:DashContent, pressed:str):
@@ -218,6 +194,47 @@ def post(content:DashContent, pressed:str):
     out += (render_content(content=content, hx_swap='outerHTML'), )
     return out
 
+@rt("/bar-metric-select")
+def post(content:DashContent, pressed:str):
+    # print(content)
+    ## currently using default dimension_list
+    bar_data = get_bar_data(kpi=pressed, dimension_list=None, time_period=content.time, comparison_type=content.comparison, period_type=content.group)
+    bar_charts = [bar_chart(dim=dim, data=bar_data, kpi=pressed) for dim in KPI_DIMENSIONS.get(pressed)]
+    return (
+        bar_kpi_select(pressed, hx_swap_oob='outerHTML'),
+        Div(cls="grid grid-cols-4 gap-y-30 gap-x-10", id='bar-chart-content')(*[c for c in bar_charts]),
+        Input(type='hidden', name='bar_dims', value=list(KPI_DIMENSIONS.get(pressed).keys()), id='bar-dims-value', hx_swap_oob='outerHTML'),
+        Input(type='hidden', name='bar_kpi', value=pressed, id='bar-kpi-value', hx_swap_oob='outerHTML'),
+    )
+
+@rt("/")
+def get():
+    ## load defaults for user/session
+    ## DashContent()
+    content = DashContent()
+    return Body(cls="min-h-screen")(
+        sidebar(),
+        top_navbar(),
+        Script(src="/static/js/oklch-rgb.js"),
+        ############ main ############
+        Form()(
+            Div(cls="main-content min-h-screen expanded p-5")(
+                options_bar(),
+                Div(cls="grid grid-cols-2", id='metrics-select-container')(metrics_select(content.fields), bar_kpi_select(content.bar_kpi)),
+                render_content(content),
+            ),
+            
+            ## may need to update these as well.
+            Input(type='hidden', name='comparison', value=content.comparison, id='comparison-value'),
+            Input(type='hidden', name='time', value=content.time, id='time-value'),
+            Input(type='hidden', name='group', value=content.group, id='group-value'),
+            Input(type='hidden', name='fields', value=content.fields, id='fields-value'),
+            Input(type='hidden', name='bar_dims', value=content.bar_dims, id='bar-dims-value'),
+            Input(type='hidden', name='bar_kpi', value=content.bar_kpi, id='bar-kpi-value'),
+        ),
+        Script(src="/static/js/collapse.js"),
+        Script(src="/static/js/chart-color.js")
+    )
 
 @rt("/test")
 def post(d: dict):

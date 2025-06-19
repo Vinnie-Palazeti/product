@@ -33,6 +33,37 @@ def metrics_select(options: Optional[List] = None):
     )
     return _metrics_dd
 
+def bar_kpi_select(selected_kpi:str, hx_swap_oob:bool=False):
+    
+    # options = OPTIONS_OPTIONS_MAP.get(option_grp)
+    # if len(options) >= 6:
+    #     options = options[:3] + [Div(cls='divider my-0')] + options[3:]
+
+    opts= [
+        Li(
+            (A(format_str(o), cls='menu-active')) if o==selected_kpi else 
+            (A(format_str(o), 
+                hx_post='/bar-metric-select', 
+                hx_swap='outerHTML', 
+                hx_target=f'#bar-chart-content',
+                hx_vals={'pressed':o},
+            ))
+        ) 
+        if isinstance(o, str) 
+        else o 
+        for o in METRICS_W_DIMS
+    ]
+
+    _select_menu = (
+        Ul(cls='menu menu-horizontal shrink-0', name='bar-select-menu', id='bar-select-menu', hx_swap_oob=hx_swap_oob)(
+            Li()(
+                Button(format_str(selected_kpi), type='button', cls='btn btn-primary btn-dash h-8', popovertarget=f'popover-bar-metrics-1', style=f"anchor-name:--anchor-bar-metrics-1"),
+                Ul(popover=True, cls='dropdown menu bg-base-100 w-52 shadow-xl mt-1', id=f'popover-bar-metrics-1', style=f"position-anchor:--anchor-bar-metrics-1")(*opts)            
+            ),
+        )
+    )
+    return _select_menu    
+
 def _format_option_value(v):
     return Span(B(v)) if not OPTIONS_MAP.get(v)=='group' else Span('Metrics By ', B(v)) ## only group has this extra formatting
 
@@ -138,8 +169,7 @@ def sidebar():
             )        
     )   
     
-   
-    
+
 def top_navbar():
     return Div(cls='navbar bg-base-100 shadow-sm w-full')(
         Div(cls='flex-1')(
@@ -158,7 +188,7 @@ def top_navbar():
                     Div(cls='card-body')(
                         Input(type='radio', name='theme-buttons', aria_label='Default', value='default', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Dark', value='dark', cls='btn theme-controller join-item'),
-                        # Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
                         # Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
                         # Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Bumblebee', value='bumblebee', cls='btn theme-controller join-item')

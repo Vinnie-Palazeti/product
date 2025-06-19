@@ -6,7 +6,7 @@ class DashContent:
     time: str='Last 14 Days'
     comparison: str='No Comparison'
     group: str='Day'
-    fields: list[str] = field(default_factory=lambda: ['users','revenue', 'expenses'])
+    fields: list[str] = field(default_factory=lambda: ['users','revenue', 'expenses', 'profit'])
     bar_kpi: str = 'expenses'
     bar_dims: list[str] = field(default_factory=lambda: [])
 
@@ -50,8 +50,9 @@ KPI_DIMENSIONS = {
     'profit': {None: [None]},
 }
 
+METRICS_W_DIMS = ['revenue', 'expenses','new_users','returning_users'] 
 
-METRICS = ['users','revenue', 'expenses','profit','new_users','returning_customers','impressions','traffic','buzz']
+METRICS = ['users','revenue', 'expenses','profit','new_users','returning_users','impressions','traffic','buzz']
 TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days','Last 3 Months','Last 6 Months', 'Last 12 Months']
 COMPARISON_OPTS = ['Previous Period','Previous Year','No Comparison']
 GROUP_OPTS= ['Day','Month','Year']
@@ -85,4 +86,4 @@ TIME_GROUP_OPTS_MAP = {
 OPTION_ANCHOR_MAP = {'time':1, 'comparison':2, 'group':3}
 OPTION_ICON_MAP = {'time':calendar, 'comparison':compare}
 
-UNIT_FIELDS = ['users', 'new_users', 'returning_customers','impressions','traffic','buzz']
+UNIT_FIELDS = ['users', 'new_users', 'returning_users','impressions','traffic','buzz']

@@ -35,7 +35,6 @@ def format_ticks(manual_ticks):
         }}
     """)   
         
-
 def line_chart(x, y, show_label=False):
     ## need to add x axis first.
     c = (
@@ -223,6 +222,7 @@ def format_metric(value, dollar):
 def stat(name:str, value, dollar:bool = True, comparison=None):
     if comparison:
         pct_chng = (value - comparison) / value * 100
+        
     return (
         ## h-[100px] could set the height based on position (1st being taller to make up for top labels) to make then more equal
         ## set the max height of the article to stop the stat + line chart from getting way to large 
@@ -277,8 +277,10 @@ def stat_chart(name, timeseries, totals, show_label):
 def bar_row(name, value, perc_change, perc_width, top:bool=False):
     if perc_change:
         fmt_change = f'{perc_change:,.0f}%'
+        text = f"text-{'success' if perc_change>0 else 'error'}"
     else:
         fmt_change='-'
+        text=None
     return (
         Tr(cls=f"h-4 group {'border-t border-primary-200' if top else ''}")(
             Td(colspan='2', cls='px-0 py-0 relative overflow-hidden')(
@@ -288,7 +290,7 @@ def bar_row(name, value, perc_change, perc_width, top:bool=False):
                     Span(value, cls='text-right')
                 )
             ),
-            Td(fmt_change, cls=f'px-4 py-0 text-right text-{'red' if perc_change else 'black'}-500')
+            Td(fmt_change, cls=f'px-4 py-0 text-right {text}')
         )
     )
     

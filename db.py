@@ -54,8 +54,10 @@ def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int =
                 continue
             for dim_name, categories in dims.items():
                 for cat in categories:
-                    if kpi == 'revenue':
-                        val = round(random.uniform(2000, 8000), 2)
+                    if kpi == 'revenue':                        
+                        trend = 0.5 * day_offset  # increases $0.50 per day
+                        noise = random.uniform(-100, 100)  # keep random fluctuations
+                        val = round(3000 + trend + noise, 2)  # base value starts at 3000                        
                     elif kpi == 'expenses':
                         val = round(random.uniform(1000, 5000), 2)
                     elif kpi == 'new_users':
