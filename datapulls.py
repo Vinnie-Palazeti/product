@@ -85,6 +85,7 @@ def format_results(
     """
     # Step 1: aggregate into a dict of date → {kpi: value}
     by_date: Dict[str, Dict[str, float]] = {}
+    
     for r in rows:
         date = r['date']
         by_date.setdefault(date, {})[r['kpi']] = r['total_value']
@@ -123,17 +124,16 @@ def get_data(
     """
     # 1. compute the date windows
     date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
-
+    
     # 2. choose date vs. month expressions
     if period_type == PeriodType.DAILY:
         date_expr = "date"
-        grp_date = "date"
-        ord_date = "date"
     else:
-        date_expr = "strftime('%Y-%m', date) AS period"
-        grp_date = "period"
-        ord_date = "period"
+        date_expr = "strftime('%Y-%m', date) AS date"
 
+    grp_date = "date"
+    ord_date = "date"
+    
     # 3. build SQL with KPI‐IN and optional dimension filter
     kpi_ph = ", ".join("?" for _ in fields)
     sql = f"""

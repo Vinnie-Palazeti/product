@@ -116,7 +116,7 @@ def options_bar(dates:str='Last 14 Days', comparison:str='No Comparison', group:
 def sidebar():
     return (
             ## side bar
-            Div(cls='sidebar bg-base-200 shadow-sm z-10 collapsed')(
+            Div(cls='sidebar bg-base-100 shadow-sm z-10 collapsed')(
                 Div(cls='p-4 flex justify-between items-center')(
                     Span('Dashboard', cls='text-xl font-bold nav-text'),
                     Button(id='toggle-btn', cls='btn btn-circle btn-sm')(
@@ -189,8 +189,8 @@ def top_navbar():
                         Input(type='radio', name='theme-buttons', aria_label='Default', value='default', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Dark', value='dark', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
-                        # Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
-                        # Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Bumblebee', value='bumblebee', cls='btn theme-controller join-item')
                     )
                 )
