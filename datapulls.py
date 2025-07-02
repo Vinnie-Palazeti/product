@@ -5,7 +5,6 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from components.relationships import KPI_DIMENSIONS
 
-
 @dataclass
 class TimeRange:
     start_date: date
@@ -26,7 +25,7 @@ def get_comparison_dates(
 ) -> Dict[str, TimeRange]:
     
     if period_type == PeriodType.DAILY:
-        valid_periods = {"Last 14 Days": 14, "Last 30 Days": 30, "Last 90 Days": 90}
+        valid_periods = {"Last 14 Days": 14, "Last 30 Days": 30, "Last 90 Days": 90, "Last 180 Days": 180}
         days = valid_periods.get(time_period)
         if days is None:
             raise ValueError(f"Invalid time period: {time_period}")
@@ -34,11 +33,7 @@ def get_comparison_dates(
         start_date = end_date - timedelta(days=days)
     
     elif period_type == PeriodType.MONTHLY:
-        valid_periods = {
-            "Last 3 Months": 3,
-            "Last 6 Months": 6,
-            "Last 12 Months": 12,
-        }
+        valid_periods = {"Last 3 Months": 3, "Last 6 Months": 6, "Last 12 Months": 12, "Last 24 Months": 24}
         months = valid_periods.get(time_period)
         if months is None:
             raise ValueError(f"Invalid monthly time period: {time_period}")

@@ -53,7 +53,7 @@ KPI_DIMENSIONS = {
 METRICS_W_DIMS = ['revenue', 'expenses','new_users','returning_users'] 
 
 METRICS = ['users','revenue', 'expenses','profit','new_users','returning_users','impressions','traffic','buzz']
-TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days','Last 3 Months','Last 6 Months', 'Last 12 Months']
+TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days', 'Last 180 Days','Last 3 Months','Last 6 Months', 'Last 12 Months', 'Last 24 Months']
 COMPARISON_OPTS = ['Previous Period','Previous Year','No Comparison']
 GROUP_OPTS= ['Day','Month','Year']
 
@@ -67,8 +67,8 @@ OPTIONS_MAP = {
 }
 OPTIONS_OPTIONS_MAP = {'time':TIME_OPTS, 'comparison':COMPARISON_OPTS, 'group':GROUP_OPTS}
 
-TIME_DAY_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days']
-TIME_MONTH_OPTS = ['Last 3 Months','Last 6 Months', 'Last 12 Months']
+TIME_DAY_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days', 'Last 180 Days']
+TIME_MONTH_OPTS = ['Last 3 Months','Last 6 Months', 'Last 12 Months', 'Last 24 Months']
 TIME_YEAR_OPTS = ['Last 2 Years', 'Last 3 Years']
 
 TIME_GROUP_OPTIONS = {v:k for v,k in zip(GROUP_OPTS, [TIME_DAY_OPTS,TIME_MONTH_OPTS,TIME_YEAR_OPTS])}

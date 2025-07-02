@@ -1,6 +1,8 @@
 ## Notes
 
 
+https://daisyui.com/docs/colors/
+
 double click modal
 sortablejs for charts within respective grid
 
@@ -14,6 +16,7 @@ group by month should switch..
 
 `./tailwindcss -i static/css/input.css -o static/css/output.css --watch`
 
+I think to handle the min width stuff I need to just format the grid columns
 
 
 <!-- 

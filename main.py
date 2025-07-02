@@ -8,8 +8,26 @@ from datapulls import *
 
 from db import *
 
+
 # create_and_populate_database("test_metrics.db", num_days = 2000)
-## I think to handle the min width stuff I need to just format the grid columns
+
+
+# svg for delta
+# different text for table?
+# date picker? custom date?
+
+# another page.. large timeseries metric in the middle.. 
+
+
+# get an actual example up
+# hetzer server
+# nginx IP lockdown
+# google auth
+    # but google auth for specific users..
+
+
+
+
 
 headers = [
     Meta(charset="UTF-8"),
@@ -48,8 +66,7 @@ headers = [
         .sidebar.collapsed .nav-text {
             display: none;
         }
-        
-        
+
         .main-content {
             margin-left: 250px;
             transition: margin-left 0.3s ease;
@@ -95,13 +112,13 @@ headers = [
 ]
 
 app, rt = fast_app(
-    title='IndyStats',
+    # title='IndyStats',
     hdrs=headers, 
     default_hdrs=False, 
     live=True, 
     htmlkw={"data-theme": "light"} 
+    
 )
-
 
 # app = FastHTML(title='Themes', hdrs=headers, default_hdrs=False, htmlkw={"data-theme": "light"} )
 # rt = app.route
@@ -109,7 +126,7 @@ app, rt = fast_app(
 @rt("/{fname:path}.{ext:static}")
 def get(fname: str, ext: str):
     return FileResponse(f"{fname}.{ext}")
-    
+
 def render_content(content: DashContent, hx_swap:str=None):
     ## get all data
     data = get_data(
@@ -192,6 +209,8 @@ def post(content:DashContent, pressed:str):
         ) 
     # return the rendered content wth the new attributes
     out += (render_content(content=content, hx_swap='outerHTML'), )
+    # return new formatted dates
+    out += (Span(format_date_range(content.time), cls='text-primary', id='formatted-date-range', hx_swap_oob='outerHTML'), )
     return out
 
 @rt("/bar-metric-select")
@@ -206,13 +225,118 @@ def post(content:DashContent, pressed:str):
         Input(type='hidden', name='bar_dims', value=list(KPI_DIMENSIONS.get(pressed).keys()), id='bar-dims-value', hx_swap_oob='outerHTML'),
         Input(type='hidden', name='bar_kpi', value=pressed, id='bar-kpi-value', hx_swap_oob='outerHTML'),
     )
+    
+    
+def render_closer_look(content:DashContent):
+    
+    field='users'
+    
+    ## get all data
+    data = get_data(
+        time_period=content.time,
+        comparison_type=content.comparison,
+        period_type=content.group,
+        fields=[field],
+    )
+    ## summarize data
+    totals = calculate_totals(results=data)
+    
+    dates = [i.get('date') for i in data.get('selected_period')]
+    y = [i.get(field) for i in data.get('selected_period')]
+    if 'comparison_period' in data:
+        y = (
+            y, # main data
+            [i.get(field) for i in data.get('comparison_period')], # comparison
+        )
+    c = embed_line_chart(x=dates, y=y, show_label=True, label_pos='left')    
+    return c
+    
+### what do I need here?
+## I need to lean into the MMM..
+## Overall Time series that we have run experiments on.
+## over the course of a year we are going to have demarkations for experiments
+## vertical lines for changes or blackouts
+
+## when we run the model or an experiment we need to save the results of the parameters
+# datepicker start and end
+
+
+## for 2 metrics
+## for the first,
+    # just copy straight up the MMM from pymc for one metric
+    # then alter slightly for the second metric
+    
+## if they selected a closer look on a metic with no MMM, just post that 
+
+## just mark experiements that occured
+## then put contributions in 4x4 grid below.
+
+
+
+
+    
+## investigate impact of MMM on these
+## https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html
+## channel contribution graphs
+# https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html#contribution-recovery
+
+
+## ROAs
+# https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html#roas
+
+
+
+## so pymc 
+@rt("/closer-look")
+def get():
+    content = DashContent()
+    return (
+        Title('IndyStats'),
+        Body(cls="min-h-screen")(
+            sidebar(),
+            top_navbar(),
+            Script(src="/static/js/oklch-rgb.js"),
+            ############ main ############
+            Form()(
+                Div(cls="main-content min-h-screen expanded p-5")(
+                    Div(cls='grid grid-cols-8')(
+                        Div(cls='col-span-8 h-144 flex justify-center items-center')(render_closer_look(content)),
+                        Div(cls='col-span-8 flex justify-center items-center')(Span('hi')), 
+                        
+                        # Div(cls='col-span-2 w-full pt-19')(
+                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
+                        #         Input(type='checkbox', cls='peer'),
+                        #         Div('Past Experiments', cls='collapse-title'),
+                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
+                        #     ),
+                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
+                        #         Input(type='checkbox', cls='peer'),
+                        #         Div('How do I create an account?', cls='collapse-title'),
+                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
+                        #     ),
+                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
+                        #         Input(type='checkbox', cls='peer'),
+                        #         Div('How do I create an account?', cls='collapse-title'),
+                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
+                        #     ) 
+                        # )
+                    ),
+                    
+                )
+            ),
+        Script(src="/static/js/collapse.js"),
+        Script(src="/static/js/chart-color.js")            
+        )
+    )    
+
 
 @rt("/")
 def get():
     ## load defaults for user/session
     ## DashContent()
     content = DashContent()
-    return Body(cls="min-h-screen")(
+    return (Title('IndyStats'),
+            Body(cls="min-h-screen")(
         sidebar(),
         top_navbar(),
         Script(src="/static/js/oklch-rgb.js"),
@@ -220,11 +344,14 @@ def get():
         Form()(
             Div(cls="main-content min-h-screen expanded p-5")(
                 options_bar(),
-                Div(cls="grid grid-cols-2", id='metrics-select-container')(metrics_select(content.fields), bar_kpi_select(content.bar_kpi)),
+                Div(cls="grid grid-cols-2", id='metrics-select-container')(
+                    Div(cls='flex flex-row gap-x-3 items-center')(
+                        metrics_select(content.fields),
+                        Span(format_date_range(content.time),cls='text-primary hover:bg-base-200 transition-colors duration-200 p-2 rounded-lg', id='formatted-date-range')
+                    ), 
+                    bar_kpi_select(content.bar_kpi)),
                 render_content(content),
             ),
-            
-            ## may need to update these as well.
             Input(type='hidden', name='comparison', value=content.comparison, id='comparison-value'),
             Input(type='hidden', name='time', value=content.time, id='time-value'),
             Input(type='hidden', name='group', value=content.group, id='group-value'),
@@ -234,7 +361,7 @@ def get():
         ),
         Script(src="/static/js/collapse.js"),
         Script(src="/static/js/chart-color.js")
-    )
+    ))
 
 @rt("/test")
 def post(d: dict):

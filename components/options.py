@@ -3,6 +3,8 @@ from fasthtml.svg import *
 from datapulls import *
 from components.svg import *
 from components.relationships import *
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 def format_str(s):
     return s.replace('_',' ').title()
@@ -34,11 +36,6 @@ def metrics_select(options: Optional[List] = None):
     return _metrics_dd
 
 def bar_kpi_select(selected_kpi:str, hx_swap_oob:bool=False):
-    
-    # options = OPTIONS_OPTIONS_MAP.get(option_grp)
-    # if len(options) >= 6:
-    #     options = options[:3] + [Div(cls='divider my-0')] + options[3:]
-
     opts= [
         Li(
             (A(format_str(o), cls='menu-active')) if o==selected_kpi else 
@@ -53,7 +50,6 @@ def bar_kpi_select(selected_kpi:str, hx_swap_oob:bool=False):
         else o 
         for o in METRICS_W_DIMS
     ]
-
     _select_menu = (
         Ul(cls='menu menu-horizontal shrink-0', name='bar-select-menu', id='bar-select-menu', hx_swap_oob=hx_swap_oob)(
             Li()(
@@ -67,12 +63,11 @@ def bar_kpi_select(selected_kpi:str, hx_swap_oob:bool=False):
 def _format_option_value(v):
     return Span(B(v)) if not OPTIONS_MAP.get(v)=='group' else Span('Metrics By ', B(v)) ## only group has this extra formatting
 
-## this below could be simplied so I am always just passing the value? something like that
 def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
     
     options = OPTIONS_OPTIONS_MAP.get(option_grp)
-    if len(options) >= 6:
-        options = options[:3] + [Div(cls='divider my-0')] + options[3:]
+    if len(options) >= 6: # lol
+        options = options[:4] + [Div(cls='divider my-0')] + options[4:]
         
     opts= [
         Li(A(o, 
@@ -97,8 +92,7 @@ def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
     )
     return Fieldset(cls='fieldset', id=f'option-{option_grp}', hx_swap_oob=hx_swap_oob)(Legend(cls='fieldset-legend pb-0')(OPTION_LABEL_MAP.get(option_grp)), _select_menu)
 
-## date range works...
-## need comparison 
+
 def options_bar(dates:str='Last 14 Days', comparison:str='No Comparison', group:str='Day'):
     
     t_select = _option(value=Span(B(dates)), option_grp='time', anchor=OPTION_ANCHOR_MAP.get('time'))
@@ -106,7 +100,7 @@ def options_bar(dates:str='Last 14 Days', comparison:str='No Comparison', group:
     g_select = _option(value=Span('Metrics By ', B(group)), option_grp='group', anchor=OPTION_ANCHOR_MAP.get('group'))
     
     return (
-        Div(cls='flex flex-row flex-nowrap gap-2 pb-5 shrink-0')(
+        Div(cls='flex flex-row flex-nowrap gap-2 pb-3 shrink-0')(
             t_select,
             c_select,
             g_select
@@ -169,7 +163,6 @@ def sidebar():
             )        
     )   
     
-
 def top_navbar():
     return Div(cls='navbar bg-base-100 shadow-sm w-full')(
         Div(cls='flex-1')(
@@ -223,3 +216,23 @@ def top_navbar():
             )
         )
     )     
+    
+    
+
+# TIME_OPTS = ['Last 14 Days','Last 30 Days','Last 90 Days','Last 3 Months','Last 6 Months', 'Last 12 Months']
+def format_date_range(time:str):
+    comps = time.split(' ')
+    num = comps[1]
+    units = comps[-1].lower()
+    end_date = datetime.today()
+    start_date = end_date - relativedelta(**{units:int(num)})    
+    
+    if units == 'days':
+        return f'{start_date.strftime("%b %-d")} - {end_date.strftime("%b %-d")}'
+
+    month_str = "%B"
+    if start_date.year != end_date.year:
+        month_str += " %Y"
+        
+    if units == 'months':
+        return f'{start_date.strftime(month_str)} - {end_date.strftime(month_str)}'

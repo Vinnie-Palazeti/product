@@ -35,7 +35,7 @@ def format_ticks(manual_ticks):
         }}
     """)   
         
-def line_chart(x, y, show_label=False):
+def line_chart(x, y, show_label=False, label_pos='right'):
     ## need to add x axis first.
     c = (
         Line()
@@ -107,7 +107,7 @@ def line_chart(x, y, show_label=False):
             yaxis_opts=opts.AxisOpts(
                 min_=min_,          
                 max_=max_,   
-                position='right',
+                position=label_pos,
                 # is_inverse=True,
                 type_="value",
                 # axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
@@ -119,7 +119,6 @@ def line_chart(x, y, show_label=False):
             )
         )
     )
-    
     c = (
         Grid()
         .add(
@@ -135,13 +134,6 @@ def line_chart(x, y, show_label=False):
     )    
     return c
 
-
-# primary --color-primary	Primary brand color, The main color of your brand
-# primary-content	--color-primary-content	Foreground content color to use onprimarycolor
-
-# secondary	--color-secondary	Secondary brand color, The optional, secondary color of your brand
-# secondary-content	--color-secondary-content    
-# https://daisyui.com/docs/colors/
 
 def embed_chart(chart):
     # needs to be unique, but don't really need it after this
@@ -205,8 +197,8 @@ def embed_chart(chart):
     """)
     return chart_id, chart_script, chart_name
 
-def embed_line_chart(x, y, show_label, cls='w-full h-full'): #
-    c = embed_chart(line_chart(x, y, show_label))
+def embed_line_chart(x, y, show_label, label_pos='right', cls='w-full h-full'): # flex justify-center items-center
+    c = embed_chart(line_chart(x, y, show_label, label_pos))
     return Div(c[1], id=c[0], cls=cls)
 
 ## remove decimals if over 1k
@@ -286,8 +278,8 @@ def bar_row(name, value, perc_change, perc_width, top:bool=False):
             Td(colspan='2', cls='px-0 py-0 relative overflow-hidden')(
                 Div(style=f'width: {perc_width}%', cls='absolute inset-0 bg-primary/20 z-0 h-full animate-grow-bar transition-transform duration-300 group-hover:scale-[1.10] group-hover:bg-primary/20'),
                 Div(cls='flex justify-between items-center px-4 py-0 relative z-10 h-full')(
-                    Span(name),
-                    Span(value, cls='text-right')
+                    Span(name, cls='text-base-content'),
+                    Span(value, cls='text-right text-base-content')
                 )
             ),
             Td(fmt_change, cls=f'px-4 py-0 text-right {text}')
@@ -310,12 +302,13 @@ def bar_chart(data, kpi:str=None, dim:str=None):
             comp_val = comp_data.get(cat).get('total_value')
             pct_change = ((current_val - comp_val) / current_val) * 100
             chart_data[cat].update({'perc_change': pct_change})
+
     return (
         Div(cls='col-span-2')(
             Table(cls='w-full text-sm text-left table-fixed border-collapse')(
                 Thead()(
                     Tr(
-                        Th(f'{dim}', cls='px-0 py-2 w-1/2'),
+                        Th(f'{dim}', cls='text-base-content px-0 py-2 w-1/2'),
                         Th('#', cls='px-6 py-2 text-right w-1/3'),
                         Th('Δ%', cls='px-6 py-2 text-right w-1/6')
                     )
@@ -329,3 +322,5 @@ def bar_chart(data, kpi:str=None, dim:str=None):
             )
         )
     )
+    
+    
