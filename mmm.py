@@ -1,225 +1,200 @@
+
+### REVIEW THIS: https://github.com/pymc-labs/pymc-marketing/blob/0f23afc5f025bce956caebc704e4d6ac26ebaef8/pymc_marketing/mmm/base.py
+
+## investigate impact of MMM on these
+## https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html
+## ROAs
+# https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html#roas
+
+
+
+
+
 import pandas as pd
 import numpy as np
+import arviz as az
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
 from pymc_marketing.mmm.transformers import geometric_adstock, logistic_saturation
 from pymc_marketing.prior import Prior
 import warnings
-import arviz as az
-import matplotlib.pyplot as plt
-
+import random
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-az.style.use("arviz-darkgrid")
-plt.rcParams["figure.figsize"] = [12, 7]
-plt.rcParams["figure.dpi"] = 100
 
 
-seed: int = sum(map(ord, "mmm"))
-rng: np.random.Generator = np.random.default_rng(seed=seed)
+def create_mmm(
+    start_date: str = "2018-04-01",
+    end_date: str = "2021-09-01",
+    channel_params: list[dict] = None,
+    n_events: int = 2,
+    event_dates: list[pd.Timestamp] = None,
+    event_effects: list[float] = None,
+    intercept: float = 2.0,
+    noise_scale: float = 0.25,
+    seasonality_amplitude: float = 0.5,
+    yearly_seasonality: int = 2,
+    model_config: dict = None,
+    sampler_config: dict = None,
+    seed: int = 42,
+) -> dict:
+    """
+    Build, fit, and summarize a marketing mix model.
 
-# date range
-min_date = pd.to_datetime("2018-04-01")
-max_date = pd.to_datetime("2021-09-01")
+    Parameters:
+    - start_date, end_date: date range for weekly data (freq='W-MON').
+    - channel_params: list of dicts with keys:
+        'name' (str), 'alpha' (float), 'saturation_lambda' (float), 'beta' (float).
+      Default: two channels x1 and x2 mirroring original behavior.
+    - n_events: number of one-off events to simulate (random if event_dates not provided).
+    - event_dates: list of timestamps for events. If None, sampled uniformly.
+    - event_effects: list of effect magnitudes per event. Default all 1.0.
+    - intercept: constant term in outcome.
+    - noise_scale: standard deviation of additive Gaussian noise.
+    - seasonality_amplitude: amplitude multiplier for yearly seasonality term.
+    - yearly_seasonality: number of Fourier pairs for seasonality in MMM.
+    - model_config: PyMC-Marketing model_config dict. If None, uses sensible defaults.
+    - sampler_config: PyMC-Marketing sampler_config dict. If None, uses {'progressbar': True}.
+    - seed: random seed for reproducibility.
 
-df = pd.DataFrame(
-    data={"date_week": pd.date_range(start=min_date, end=max_date, freq="W-MON")}
-).assign(
-    year=lambda x: x["date_week"].dt.year,
-    month=lambda x: x["date_week"].dt.month,
-    dayofyear=lambda x: x["date_week"].dt.dayofyear,
-)
+    Returns:
+    A dict with keys:
+    - 'channel_contribution_over_time'
+    - 'channel_contribution_pass_forward_grid'
+    - 'channel_contribution_barchart'
+    """
+    rng = np.random.default_rng(seed)
 
-n = df.shape[0]
-print(f"Number of observations: {n}")
+    # Prepare date frame
+    dates = pd.date_range(start=start_date, end=end_date, freq='W-MON')
+    df = pd.DataFrame({'date_week': dates})
+    df['dayofyear'] = df['date_week'].dt.dayofyear
+    n = len(df)
 
-# media data
-x1 = rng.uniform(low=0.0, high=1.0, size=n)
-df["x1"] = np.where(x1 > 0.9, x1, x1 / 2)
+    # Default channels if not provided
+    if channel_params is None:        
+        channel_names = random.sample(['Google Ads', 'Meta Ads','TV','Radio','Website','Page Search'], 2)
+        
+        channel_params = [
+            {'name': channel_names[0], 'alpha': 0.4, 'saturation_lambda': 4.0, 'beta': 3.0},
+            {'name': channel_names[1], 'alpha': 0.2, 'saturation_lambda': 3.0, 'beta': 2.0},
+        ]
 
-x2 = rng.uniform(low=0.0, high=1.0, size=n)
-df["x2"] = np.where(x2 > 0.8, x2, 0)
+    # Generate media channels
+    for ch in channel_params:
+        name = ch['name']
+        raw = rng.uniform(0, 1, size=n)
+        df[name] = raw
+        # Adstock
+        ad = geometric_adstock(x=raw, alpha=ch['alpha'], l_max=8, normalize=True).eval().flatten()
+        df[f"{name}_adstock"] = ad
+        # Saturation
+        sat = logistic_saturation(x=ad, lam=ch['saturation_lambda']).eval()
+        df[f"{name}_adstock_saturated"] = sat
 
-# apply geometric adstock transformation
-alpha1: float = 0.4
-alpha2: float = 0.2
+    # Trend term
+    df['t'] = np.arange(n)
+    df['trend'] = (np.linspace(0, 50, n) + 10) ** (1/4) - 1
 
-df["x1_adstock"] = (
-    geometric_adstock(x=df["x1"].to_numpy(), alpha=alpha1, l_max=8, normalize=True)
-    .eval()
-    .flatten()
-)
+    # Yearly seasonality
+    df['cs'] = -np.sin(2 * np.pi * df['dayofyear'] * 2 / 365.5)
+    df['cc'] = np.cos(2 * np.pi * df['dayofyear'] * 1 / 365.5)
+    df['seasonality'] = seasonality_amplitude * (df['cs'] + df['cc'])
 
-df["x2_adstock"] = (
-    geometric_adstock(x=df["x2"].to_numpy(), alpha=alpha2, l_max=8, normalize=True)
-    .eval()
-    .flatten()
-)
+    # Events
+    if event_dates is None:
+        sampled = rng.choice(df['date_week'], size=n_events, replace=False)
+        event_dates = list(sampled)
+    if event_effects is None:
+        event_effects = [1.0] * n_events
 
-# apply saturation transformation
-lam1: float = 4.0
-lam2: float = 3.0
+    for i, (ed, eff) in enumerate(zip(event_dates, event_effects), start=1):
+        col = f"event_{i}"
+        df[col] = np.where(df['date_week'] == ed, eff, 0.0)
 
-df["x1_adstock_saturated"] = logistic_saturation(
-    x=df["x1_adstock"].to_numpy(), lam=lam1
-).eval()
+    # Build response y
+    eps = rng.normal(0, noise_scale, size=n)
+    media_term = sum(
+        ch['beta'] * df[f"{ch['name']}_adstock_saturated"] for ch in channel_params
+    )
+    event_term = sum(df[f"event_{i+1}"] for i in range(n_events))
+    df['y'] = intercept + df['trend'] + df['seasonality'] + event_term + media_term + eps
 
-df["x2_adstock_saturated"] = logistic_saturation(
-    x=df["x2_adstock"].to_numpy(), lam=lam2
-).eval()
+    # Prepare X and y
+    drop_cols = ['y', 'dayofyear', 'cs', 'cc']
+    X = df.drop(columns=drop_cols)
+    y = df['y']
 
-df["trend"] = (np.linspace(start=0.0, stop=50, num=n) + 10) ** (1 / 4) - 1
+    # Default priors and sampler
+    if model_config is None:
+        total_spend = X[[ch['name'] for ch in channel_params]].sum()
+        spend_share = total_spend / total_spend.sum()
+        prior_sigma = len(channel_params) * spend_share.to_numpy()
+        
+        model_config = {
+            'intercept': Prior('Normal', mu=0.5, sigma=0.2),
+            'saturation_beta': Prior('HalfNormal', sigma=prior_sigma),
+            'gamma_control': Prior('Normal', mu=0, sigma=0.05),
+            'gamma_fourier': Prior('Laplace', mu=0, b=0.2),
+            'likelihood': Prior('Normal', sigma=Prior('HalfNormal', sigma=6)),
+        }
+    if sampler_config is None:
+        sampler_config = {'progressbar': False}
 
-df["cs"] = -np.sin(2 * 2 * np.pi * df["dayofyear"] / 365.5)
-df["cc"] = np.cos(1 * 2 * np.pi * df["dayofyear"] / 365.5)
-df["seasonality"] = 0.5 * (df["cs"] + df["cc"])
-df["event_1"] = (df["date_week"] == "2019-05-13").astype(float)
-df["event_2"] = (df["date_week"] == "2020-09-14").astype(float)
+    # Instantiate and fit MMM
+    mmm = MMM(
+        model_config=model_config,
+        sampler_config=sampler_config,
+        date_column='date_week',
+        adstock=GeometricAdstock(l_max=8),
+        saturation=LogisticSaturation(),
+        channel_columns=[ch['name'] for ch in channel_params],
+        control_columns=[f"event_{i}" for i in range(1, n_events+1)] + ['t'],
+        yearly_seasonality=yearly_seasonality,
+    )
 
-df["intercept"] = 2.0
-df["epsilon"] = rng.normal(loc=0.0, scale=0.25, size=n)
+    mmm.sample_prior_predictive(X, y, samples=2000)
+    mmm.fit(X=X, y=y, chains=4, target_accept=0.85, nuts_sampler='numpyro', random_seed=rng)
+    mmm.sample_posterior_predictive(X, extend_idata=True, combined=True)
 
-amplitude = 1
-beta_1 = 3.0
-beta_2 = 2.0
-betas = [beta_1, beta_2]
+    # Summaries
+    # Pass-forward grid
+    grid = mmm.get_channel_contributions_forward_pass_grid(start=0, stop=1.5, num=10)
+    pass_forward = {'x_axis': [str(i) for i in np.linspace(0, 1.5, 10).round(2)]}
+    
+    for ch in channel_params:
+        total = grid.sel(channel=ch['name']).sum(dim='date')
+        hdi = az.hdi(ary=total).x
+        pass_forward[ch['name']] = {
+            'values': total.mean(dim=('chain','draw')).values.round(2).tolist(),
+            'lower': hdi[:, 0].values.round(2).tolist(),
+            'upper': hdi[:, 1].values.round(2).tolist(),
+        }
 
+    # Over time
+    all_time = mmm.compute_mean_contributions_over_time(original_scale=True)
+    groups = {
+        'Base': [f'event_{i}' for i in range(1, n_events+1)] + ['intercept', 't', 'yearly_seasonality'],
+    }
+    for ch in channel_params:
+        groups[f"Channel {ch['name']}"] = [ch['name']]
+    buff = [all_time[cols].sum(axis='columns').rename(name) for name, cols in groups.items()]
+    df_time = pd.concat(buff, axis=1).reset_index()
+    over_time = {
+        'date': [d.strftime('%Y-%m-%d') for d in df_time['date'].tolist()],
+        'values': [df_time[col].round(2).tolist() for col in df_time.columns if col != 'date'],
+        'labels': [col for col in df_time.columns if col != 'date'],
+    }
 
-df["y"] = amplitude * (
-    df["intercept"]
-    + df["trend"]
-    + df["seasonality"]
-    + 1.5 * df["event_1"]
-    + 2.5 * df["event_2"]
-    + beta_1 * df["x1_adstock_saturated"]
-    + beta_2 * df["x2_adstock_saturated"]
-    + df["epsilon"]
-)
+    # Bar chart
+    decomp = mmm.compute_mean_contributions_over_time(original_scale=True)
+    decomp = mmm._process_decomposition_components(data=decomp)
+    barchart = {
+        'labels': decomp['component'].tolist(),
+        'values': decomp['contribution'].round(2).tolist(),
+    }
 
-columns_to_keep = [
-    "date_week",
-    "y",
-    "x1",
-    "x2",
-    "event_1",
-    "event_2",
-    "dayofyear",
-]
-
-data = df[columns_to_keep].copy()
-data["t"] = range(n)
-
-
-total_spend_per_channel = data[["x1", "x2"]].sum(axis=0)
-spend_share = total_spend_per_channel / total_spend_per_channel.sum()
-
-n_channels = 2
-prior_sigma = n_channels * spend_share.to_numpy()
-
-X = data.drop("y", axis=1)
-y = data["y"]
-
-my_model_config = {
-    "intercept": Prior("Normal", mu=0.5, sigma=0.2),
-    "saturation_beta": Prior("HalfNormal", sigma=prior_sigma),
-    "gamma_control": Prior("Normal", mu=0, sigma=0.05),
-    "gamma_fourier": Prior("Laplace", mu=0, b=0.2),
-    "likelihood": Prior("Normal", sigma=Prior("HalfNormal", sigma=6)),
-}
-
-my_sampler_config = {"progressbar": True}
-
-mmm = MMM(
-    model_config=my_model_config,
-    sampler_config=my_sampler_config,
-    date_column="date_week",
-    adstock=GeometricAdstock(l_max=8),
-    saturation=LogisticSaturation(),
-    channel_columns=["x1", "x2"],
-    control_columns=["event_1", "event_2", "t"],
-    yearly_seasonality=2,
-)
-
-# Generate prior predictive samples
-mmm.sample_prior_predictive(X, y, samples=2_000)
-
-
-
-# fig, ax = plt.subplots()
-# mmm.plot_prior_predictive(ax=ax, original_scale=True)
-# ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.2), ncol=4)
-# fig.show()
-
-mmm.fit(X=X, y=y, chains=4, target_accept=0.85, nuts_sampler="numpyro", random_seed=rng)
-
-# sample from the posterior predictive distribution
-mmm.sample_posterior_predictive(X, extend_idata=True, combined=True)
-
-# errors = mmm.get_errors(original_scale=True)
-# fig, ax = plt.subplots(figsize=(8, 6))
-# az.plot_dist(
-#     errors, quantiles=[0.25, 0.5, 0.75], color="C3", fill_kwargs={"alpha": 0.7}, ax=ax
-# )
-# ax.axvline(x=0, color="black", linestyle="--", linewidth=1, label="zero")
-# ax.legend()
-# ax.set(title="Errors Posterior Distribution")
-
-groups = {
-    "Base": [
-        "intercept",
-        "event_1",
-        "event_2",
-        "t",
-        "yearly_seasonality",
-    ],
-    "Channel 1": ["x1"],
-    "Channel 2": ["x2"],
-}
-
-breakpoint()
-
-fig = mmm.plot_grouped_contribution_breakdown_over_time(
-    stack_groups=groups,
-    original_scale=True,
-    area_kwargs={
-        "color": {
-            "Channel 1": "C0",
-            "Channel 2": "C1",
-            "Base": "gray",
-            "Seasonality": "black",
-        },
-        "alpha": 0.7,
-    },
-)
-
-# fig.suptitle("Contribution Breakdown over Time", fontsize=16)
-# fig.show()
-
-all_contributions_over_time = mmm.compute_mean_contributions_over_time(original_scale=True)
-
-if groups is not None:
-    grouped_buffer = []
-    for group, columns in groups.items():
-        grouped = (
-            all_contributions_over_time.filter(columns)
-            .sum(axis="columns")
-            .rename(group)
-        )
-        grouped_buffer.append(grouped)
-
-    all_contributions_over_time = pd.concat(grouped_buffer, axis="columns")
-
-
-mmm.plot_waterfall_components_decomposition()
-plt.show()
-
-
-
-
-dataframe=mmm.compute_mean_contributions_over_time(original_scale=False)
-dataframe = mmm._process_decomposition_components(data=dataframe)
-total_contribution = dataframe["contribution"].sum()
-
-
-mmm.plot_channel_contribution_grid(start=0, stop=1.5, num=12)
-
-
+    return {
+        'channel_contribution_pass_forward_grid': pass_forward,
+        'channel_contribution_over_time': over_time,
+        'channel_contribution_barchart': barchart,
+    }

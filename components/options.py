@@ -63,15 +63,16 @@ def bar_kpi_select(selected_kpi:str, hx_swap_oob:bool=False):
 def _format_option_value(v):
     return Span(B(v)) if not OPTIONS_MAP.get(v)=='group' else Span('Metrics By ', B(v)) ## only group has this extra formatting
 
-def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False):
+def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False, options=[], hx_post='/options-input'):
     
-    options = OPTIONS_OPTIONS_MAP.get(option_grp)
-    if len(options) >= 6: # lol
-        options = options[:4] + [Div(cls='divider my-0')] + options[4:]
-        
+    if not options:
+        options = OPTIONS_OPTIONS_MAP.get(option_grp)
+        if len(options) >= 6: # lol
+            options = options[:4] + [Div(cls='divider my-0')] + options[4:]
+            
     opts= [
         Li(A(o, 
-             hx_post='/options-input', 
+             hx_post=hx_post,
              hx_swap='outerHTML', 
              hx_target=f'#option-{option_grp}',
              hx_vals={OPTIONS_MAP.get(o):o, 'pressed':option_grp}
@@ -121,7 +122,7 @@ def sidebar():
                 ),
                 Ul(cls='menu p-4 pt-0')(
                     Li(
-                        A(href='#', cls='flex items-center p-2 hover:bg-base-300 rounded-lg')(
+                        A(href='/', cls='flex items-center p-2 hover:bg-base-300 rounded-lg')(
                             home_svg,
                             Span('Home', cls='ml-3 nav-text')
                         )
@@ -236,3 +237,32 @@ def format_date_range(time:str):
         
     if units == 'months':
         return f'{start_date.strftime(month_str)} - {end_date.strftime(month_str)}'
+    
+def option_closerlook(value:str, option_grp:str='', options=METRICS,
+                             hx_target='#closer-look-main-content', 
+                             hx_post='/closer-look-input', hx_swap='outerHTML', hx_swap_oob=False,
+                             name='Metrics', id='closer-look-metric', opts={},
+                             ): 
+    anchor = {'Metrics':1, 'Display':2}.get(name, 99)
+    opts= [
+        Li(A(o.replace('_',' ').title(), 
+             hx_post=hx_post,
+             hx_swap=hx_swap, 
+             hx_target=hx_target,
+             hx_vals={'pressed':o} | opts
+             )) 
+        if isinstance(o, str) 
+        else o 
+        for o in options
+    ]
+    icon = OPTION_ICON_MAP.get(option_grp, None)
+    _selected = Div(cls='flex flex-row gap-x-3 items-center')(Span(icon) if icon else None, _format_option_value(value), Span(arrow_down))
+    _select_menu = (
+        Ul(cls='menu menu-horizontal shrink-0')(
+            Li()(
+                Button(_selected, type='button', cls='btn', popovertarget=f'popover-{anchor}', style=f"anchor-name:--anchor-{anchor}"),
+                Ul(popover=True, cls='dropdown menu bg-base-100 shadow-xl mt-1', id=f'popover-{anchor}', style=f"position-anchor:--anchor-{anchor}")(*opts)            
+            ),
+        )
+    )
+    return Fieldset(cls='fieldset', id=id, hx_swap_oob=hx_swap_oob)(Legend(cls='fieldset-legend pb-0')(name), _select_menu)

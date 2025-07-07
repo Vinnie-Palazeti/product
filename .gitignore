@@ -4,3 +4,4 @@ __pycache__/
 tailwindcss
 *.db
 .venv/
+tmp*

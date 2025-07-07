@@ -18,8 +18,10 @@ from datetime import datetime, timedelta
 import random
 from tqdm import tqdm
 from components.relationships import KPI_DIMENSIONS
+from mmm import create_mmm
+import json
 
-def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int = 365):
+def create_and_populate_data(db_path: str = "test_metrics.db", num_days: int = 365):
     """
     Creates an 'events' table and populates it with synthetic
     KPI data for each date, KPI, and dimension/category,
@@ -28,7 +30,7 @@ def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int =
     conn = sqlite3.connect(db_path)
     cur  = conn.cursor()
 
-    # 1) Drop & recreate
+    # Drop & recreate
     cur.execute("DROP TABLE IF EXISTS events")
     cur.execute("""
         CREATE TABLE events (
@@ -44,7 +46,7 @@ def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int =
     start_date = today - timedelta(days=num_days - 1)
     total_rows = 0
 
-    # 2) Populate base KPIs
+    # Populate base KPIs
     for day_offset in tqdm(range(num_days)):
         day     = start_date + timedelta(days=day_offset)
         iso_day = day.isoformat()
@@ -73,7 +75,7 @@ def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int =
                     )
                     total_rows += 1
 
-    # 3) Derive profit & total_users in SQL
+    # Derive profit & total_users in SQL
     cur.executescript("""
         -- profit = sum(revenue) - sum(expenses) per day
         INSERT INTO events (date, kpi, dimension, category, value)
@@ -102,11 +104,36 @@ def create_and_populate_events(db_path: str = "test_metrics.db", num_days: int =
     # each INSERT adds one row per date
     total_rows += 2 * num_days
 
-    # 4) Commit & close
+    # Commit & close
+    conn.commit()
+    
+    print(f"Populated {db_path!r} with {total_rows} event rows over {num_days} days.")
+    
+    
+    # Start Mixed Media Modeling section
+    cur.execute("DROP TABLE IF EXISTS mmm")
+    cur.execute("""
+        CREATE TABLE mmm (
+            date         TEXT,
+            metric       TEXT,
+            data         TEXT
+        )
+    """)
+    exps = [
+        ('users',"2023-04-01","2025-05-01"),
+        ('users',"2018-07-01","2023-01-01"),
+        ('revenue',"2020-04-01","2025-06-01"),
+    ]
+    
+    for metric, start_date, end_date in exps:
+        print(metric,start_date,end_date)
+        mmm_output = create_mmm(start_date=start_date, end_date=end_date)
+        json_text = json.dumps(mmm_output, ensure_ascii=False)
+        cur.execute(
+            "INSERT INTO mmm (date, metric, data) VALUES (?, ?, ?)",
+            (start_date, metric, json_text)
+        )    
+        
     conn.commit()
     conn.close()
-
-    print(f"Populated {db_path!r} with {total_rows} event rows over {num_days} days.")
-
-# Example: generate two years of data
-create_and_populate_events(num_days=2000)
+    

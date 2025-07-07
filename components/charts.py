@@ -1,11 +1,50 @@
 from fasthtml.common import *
 from uuid import uuid4
-from pyecharts.charts import Line, Grid
+from pyecharts.charts import Line, Grid, Bar, HeatMap
 import pyecharts.options as opts
 from pyecharts.commons.utils import JsCode
 from components.relationships import UNIT_FIELDS
 from components.svg import SVG_MAP
-import numpy as np    
+import numpy as np
+from pyecharts.charts import Bar
+from pyecharts import options as opts
+import arviz as az
+import pandas as pd
+
+
+def channel_contribution_barchart(data):
+    labels = data['labels']
+    values = data['values']
+
+    # dataframe = mmm.compute_mean_contributions_over_time(original_scale=True)
+    # dataframe = mmm._process_decomposition_components(data=dataframe)
+    
+    # dataframe['percent'] = (dataframe['contribution'] / 100).round(2)
+    # values = dataframe['contribution'].round(2).to_list()
+    # labels = dataframe['component'].to_list()  
+        
+    c = (
+        Bar()
+        .add_xaxis(xaxis_data=labels)
+        .add_yaxis(series_name="Channel Contribution", y_axis=values,label_opts=opts.LabelOpts(is_show=True,position='right'))
+        .reversal_axis()
+        .set_global_opts(legend_opts=opts.LegendOpts(is_show=False))
+    )
+    c = (
+        Grid()
+        .add(
+            c,
+            grid_opts=opts.GridOpts(
+                pos_top="5%",
+                pos_left="5%",
+                pos_right="5%",
+                pos_bottom="5%",
+                is_contain_label=True
+            )
+        )
+    ) 
+    c = embed_chart(c)   
+    return Div(c[1], id=c[0], cls='w-full h-full') 
 
 def calculate_manual_ticks(min_val, max_val, num_ticks=5):
     """Calculate manual tick positions based on data range"""
@@ -35,7 +74,7 @@ def format_ticks(manual_ticks):
         }}
     """)   
         
-def line_chart(x, y, show_label=False, label_pos='right'):
+def line_chart(x, y, show_label=False, label_pos='right', name=""):
     ## need to add x axis first.
     c = (
         Line()
@@ -58,7 +97,14 @@ def line_chart(x, y, show_label=False, label_pos='right'):
         c = (
             c
             .add_yaxis(
-                series_name="",
+                series_name=name,
+                y_axis=y,
+                symbol="emptyCircle",
+                is_symbol_show=False,
+                label_opts=opts.LabelOpts(is_show=False)
+            )
+            .add_yaxis(
+                series_name="comparison",
                 y_axis=y_compare,
                 symbol="emptyCircle",
                 is_symbol_show=False,
@@ -72,19 +118,22 @@ def line_chart(x, y, show_label=False, label_pos='right'):
         min_=round(min(y)*0.98)         
         max_=round(max(y)*1.02)
         manual_ticks = calculate_manual_ticks(min_,max_,4)
-
+        c = (
+            c
+            .add_yaxis(
+                series_name="",
+                y_axis=y,
+                symbol="emptyCircle",
+                is_symbol_show=False,
+                label_opts=opts.LabelOpts(is_show=False)
+            )       
+            
+        )       
+        
     c = (
-        c       
-        .add_yaxis(
-            series_name="",
-            y_axis=y,
-            symbol="emptyCircle",
-            is_symbol_show=False,
-            label_opts=opts.LabelOpts(is_show=False, color='rgb(255, 158, 68)'),
-            linestyle_opts=opts.LineStyleOpts(color="rgb(255, 158, 68)"),
-            itemstyle_opts=opts.ItemStyleOpts(color="rgb(255, 158, 68)")
-        )
-        .set_global_opts(         
+        c           
+        .set_global_opts(
+            legend_opts=opts.LegendOpts(is_show=False),  # hide legend 
             tooltip_opts=opts.TooltipOpts(
                     is_show=True, 
                     trigger="axis",
@@ -93,12 +142,9 @@ def line_chart(x, y, show_label=False, label_pos='right'):
                     background_color="rgba(50, 50, 50, 0.7)"  # Background color
             ),                               
             xaxis_opts=opts.AxisOpts(
-                # formatter
                 position='top',
-                # is_inverse=True,
                 type_="category",
                 axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
-                # boundary_gap=False,
                 axislabel_opts=opts.LabelOpts(formatter=JsCode("function(value, index){if (index === 0) {return '';} return value;}"), is_show=show_label),
                 axisline_opts=opts.AxisLineOpts(is_show=False),
                 axistick_opts=opts.AxisTickOpts(is_show=False),
@@ -108,9 +154,7 @@ def line_chart(x, y, show_label=False, label_pos='right'):
                 min_=min_,          
                 max_=max_,   
                 position=label_pos,
-                # is_inverse=True,
                 type_="value",
-                # axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
                 interval=round((max(manual_ticks) - min(manual_ticks)) / (len(manual_ticks) - 1)),
                 axislabel_opts=opts.LabelOpts(is_show=True, formatter=format_ticks(manual_ticks)),                
                 axisline_opts=opts.AxisLineOpts(is_show=False),
@@ -134,13 +178,149 @@ def line_chart(x, y, show_label=False, label_pos='right'):
     )    
     return c
 
+def channel_contributions_over_time(data):
+    x = data['date']
+    y_data = data['values']
+    series_names = data['labels']
+    c = embed_chart(area_chart(x, y_data, series_names), connect=False)
+    return Div(c[1], id=c[0], cls='w-full h-full')
+        
 
-def embed_chart(chart):
+def area_chart(x, y_data, series_names):
+    c = (
+        Line()
+        .add_xaxis(xaxis_data=x)
+    )
+    # Add each series as area
+    for i, (name, data) in enumerate(zip(series_names, y_data)):
+        c = c.add_yaxis(
+            series_name=name,
+            y_axis=data,
+            stack="contributions",  # Stack all contributions
+            areastyle_opts=opts.AreaStyleOpts(opacity=0.7),
+            symbol="emptyCircle",
+            is_symbol_show=False,
+            label_opts=opts.LabelOpts(is_show=False)
+        )
+    c = (
+        c.set_global_opts(
+            tooltip_opts=opts.TooltipOpts(
+                is_show=True,
+                trigger="axis",
+                position='top',
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff"),
+                background_color="rgba(50, 50, 50, 0.7)"
+            ),
+            xaxis_opts=opts.AxisOpts(
+                position='bottom',
+                type_="category",
+                axispointer_opts=opts.AxisPointerOpts(is_show=True, type_="line"),
+                axislabel_opts=opts.LabelOpts(is_show=True),
+                axisline_opts=opts.AxisLineOpts(is_show=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),
+            ),
+            yaxis_opts=opts.AxisOpts(
+                type_="value",
+                axisline_opts=opts.AxisLineOpts(is_show=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),
+            ),
+            legend_opts=opts.LegendOpts(is_show=True, pos_top="5%")
+        )
+    )
+    
+    c = (
+        Grid()
+        .add(
+            c,
+            grid_opts=opts.GridOpts(
+                pos_top="5%",
+                pos_left="5%",
+                pos_right="5%",
+                pos_bottom="5%",
+                is_contain_label=True
+            )
+        )
+    )
+    return c
+
+
+def channel_contributions_forward_pass_grid(data):
+    line = Line().add_xaxis(data['x_axis'])
+    for k,v in data.items():
+        if k == 'x_axis':
+            continue
+        line = (
+            line
+            .add_yaxis(
+                series_name=k,
+                y_axis=v['values'],
+                is_symbol_show=False,
+                label_opts=opts.LabelOpts(is_show=False),
+            )
+            .add_yaxis(
+                series_name=f"{k}-low",
+                y_axis=v['lower'],
+                is_symbol_show=False,
+                linestyle_opts=opts.LineStyleOpts(opacity=0),
+                stack=k,
+                label_opts=opts.LabelOpts(is_show=False),
+            )
+            .add_yaxis(
+                series_name=f"{k}-upper",
+                y_axis=v['upper'],
+                is_symbol_show=False,
+                linestyle_opts=opts.LineStyleOpts(opacity=0),
+                areastyle_opts=opts.AreaStyleOpts(opacity=0.2),
+                stack=k,
+                label_opts=opts.LabelOpts(is_show=False),
+            )
+        )
+    line = line.add_yaxis(
+        series_name="Current Spend",
+        y_axis=[None] * len(data['x_axis']),
+        is_symbol_show=False,
+        label_opts=opts.LabelOpts(is_show=False),
+        markline_opts=opts.MarkLineOpts(
+            data=[opts.MarkLineItem(x='1.0')],
+            symbol=["none", "none"], 
+            linestyle_opts=opts.LineStyleOpts(type_="dotted", width=2),
+        ),
+    )   
+    
+    # print(data['x_axis'])     
+        
+    line=(
+        line
+        # .set_series_opts(markline_opts=opts.MarkLineOpts(data=[opts.MarkLineItem(x=1.0)], linestyle_opts=opts.LineStyleOpts(type_="dotted", width=2)))
+        .set_global_opts(legend_opts=opts.LegendOpts(is_show=False), tooltip_opts=opts.TooltipOpts(trigger="axis", position="top"))
+    )
+    
+    grid = (
+        Grid()
+        .add(
+            line, 
+            grid_opts=opts.GridOpts(
+                pos_top="10%", 
+                pos_left="5%", 
+                pos_right="5%", 
+                pos_bottom="10%", 
+                is_contain_label=True
+            )
+        )
+    )
+    c = embed_chart(grid, connect=False)
+    return Div(c[1], id=c[0], cls='w-full h-full')
+
+
+# one thing to note here is the charts only have to be INTERNALLY consistent..
+def embed_chart(chart, color = True, connect= True):
     # needs to be unique, but don't really need it after this
     chart_id = f'{uuid4()}' 
     chart_name = str(chart_id).replace("-","")
     options = chart if isinstance(chart,str) else chart.dump_options()
-    chart_script = Script(f"""                          
+    chart_script = fr"""                          
         var chart_{chart_name} = echarts.init(document.getElementById('{chart_id}'), 'white', {{renderer: 'canvas'}});
         var option_{chart_name} = {options};
         chart_{chart_name}.setOption(option_{chart_name});
@@ -149,7 +329,13 @@ def embed_chart(chart):
         if (!window.chartRegistry) {{
             window.chartRegistry = [];
         }}
-
+        
+        window.addEventListener('resize', function() {{
+            chart_{chart_name}.resize();
+        }});
+        """
+    if color:
+        chart_script+=fr"""
         function cssOklchToRgb(cssVarName) {{
             // Step 1: Read OKLCH string from CSS variable
             const oklchStr = getComputedStyle(document.body).getPropertyValue(cssVarName).trim();
@@ -170,35 +356,54 @@ def embed_chart(chart):
 
             // Step 5: Format as CSS rgb() string
             return `rgb(${{rgb255[0]}}, ${{rgb255[1]}}, ${{rgb255[2]}})`;
-        }}     
+        }} 
         
-        var rgbPrim = cssOklchToRgb('--color-primary');
-        var rgbSec = cssOklchToRgb('--color-secondary');
+        var colors = [
+            cssOklchToRgb('--color-primary'),
+            cssOklchToRgb('--color-secondary'),
+            cssOklchToRgb('--color-accent'),
+            cssOklchToRgb('--color-info')
+        ];
+                
+        // 1) grab the current option & series list
+        const opt_{chart_name}  = chart_{chart_name}.getOption();
+        const origSeries_{chart_name} = opt_{chart_name}.series;
         
-        console.log(rgbPrim);
-        console.log(rgbSec);
+        // 2) compute the list of unique base-names
+        const baseNames_{chart_name} = Array.from(new Set(
+            origSeries_{chart_name}.map(s => (s.name || '').replace(/-(low|upper)$/, ''))
+        ));
 
-        chart_{chart_name}.setOption({{
-            color: [rgbPrim, rgbSec],  // extend as needed
-            series: chart_{chart_name}.getOption().series.map((s, i) => ({{
+        // 3) remap every series, lookup its base’s index, pick that color
+        const newSeries_{chart_name} = origSeries_{chart_name}.map(s => {{
+            const name     = s.name || '';
+            const baseName = name.replace(/-(low|upper)$/, '');
+            const idx      = baseNames_{chart_name}.indexOf(baseName);
+            const color    = colors[idx % colors.length];
+
+            return {{
                 ...s,
-                lineStyle: {{ color: i === 0 ? rgbPrim : rgbSec }},
-                itemStyle: {{ color: i === 0 ? rgbPrim : rgbSec }}
-            }}))
-        }});                 
-        
-        window.chartRegistry.push(chart_{chart_name});
-        echarts.connect(window.chartRegistry);    
-        
-        window.addEventListener('resize', function() {{
-            chart_{chart_name}.resize();
+                lineStyle: {{ ...(s.lineStyle || {{}}), color }},
+                itemStyle: {{ ...(s.itemStyle || {{}}), color }}
+            }};
         }});
-        
-    """)
-    return chart_id, chart_script, chart_name
 
-def embed_line_chart(x, y, show_label, label_pos='right', cls='w-full h-full'): # flex justify-center items-center
-    c = embed_chart(line_chart(x, y, show_label, label_pos))
+        // 4) push it back into the chart
+        chart_{chart_name}.setOption({{ series: newSeries_{chart_name} }});
+        """
+    if connect:
+        chart_script+=fr"""
+        window.chartRegistry.push(chart_{chart_name});
+        echarts.connect(window.chartRegistry);             
+        """
+    return chart_id, Script(chart_script), chart_name
+
+def embed_line_chart(x, y, show_label, label_pos='right', name="", cls='w-full h-full'): # flex justify-center items-center
+    c = embed_chart(line_chart(x, y, show_label, label_pos, name))
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_area_chart(x, y_data, series_names, colors=None, cls='w-full h-full'):
+    c = embed_chart(area_chart(x, y_data, series_names, colors))
     return Div(c[1], id=c[0], cls=cls)
 
 ## remove decimals if over 1k
@@ -227,7 +432,7 @@ def stat(name:str, value, dollar:bool = True, comparison=None):
                     )
             ),
             Div(cls="absolute top-1 right-7 text-base-600 opacity-0 group-hover:opacity-100 transition-opacity duration-1000")(
-                Div(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200')(
+                A(cls='hover:bg-base-300 cursor-pointer transition-colors duration-200', href=f"/closer-look?metric={name}")(
                     SVG_MAP.get("visit")
                 )
             ),                     
@@ -255,7 +460,7 @@ def stat_chart(name, timeseries, totals, show_label):
             y, # main data
             [i.get(name) for i in timeseries.get('comparison_period')], # comparison
         )
-    c = embed_line_chart(x=dates, y=y, show_label=show_label)
+    c = embed_line_chart(x=dates, y=y, show_label=show_label, name=name)
     return (
         Div(id=f'metric-container-{name}', cls="contents")( ## this is a wrapper. display:contents -> element itself disappears and children styling  & layout is displayed
         stat(
@@ -292,7 +497,7 @@ def pivot_by_category(rows, dim):
         for row in rows
         if row.get('dimension') == dim
     }
-    
+
 def bar_chart(data, kpi:str=None, dim:str=None):
     chart_data=pivot_by_category(rows=data.get('selected_period'), dim=dim)
     if 'comparison_period' in data:
@@ -302,7 +507,6 @@ def bar_chart(data, kpi:str=None, dim:str=None):
             comp_val = comp_data.get(cat).get('total_value')
             pct_change = ((current_val - comp_val) / current_val) * 100
             chart_data[cat].update({'perc_change': pct_change})
-
     return (
         Div(cls='col-span-2')(
             Table(cls='w-full text-sm text-left table-fixed border-collapse')(
@@ -322,5 +526,4 @@ def bar_chart(data, kpi:str=None, dim:str=None):
             )
         )
     )
-    
     

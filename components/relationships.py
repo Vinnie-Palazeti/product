@@ -6,7 +6,7 @@ class DashContent:
     time: str='Last 14 Days'
     comparison: str='No Comparison'
     group: str='Day'
-    fields: list[str] = field(default_factory=lambda: ['users','revenue', 'expenses', 'profit'])
+    fields: list[str] = field(default_factory=lambda: ['users','revenue', 'expenses', 'profit', 'new_users'])
     bar_kpi: str = 'expenses'
     bar_dims: list[str] = field(default_factory=lambda: [])
 
@@ -58,7 +58,7 @@ COMPARISON_OPTS = ['Previous Period','Previous Year','No Comparison']
 GROUP_OPTS= ['Day','Month','Year']
 
 LABEL_OPTION_MAP = {'Date Range': 'time', 'Comparison Period': 'comparison', 'Time Unit':'group'}
-OPTION_LABEL_MAP = {'time':'Date Range','comparison':'Comparison Period','group':'Time Unit'}
+OPTION_LABEL_MAP = {'time':'Date Range','comparison':'Comparison Period','group':'Time Unit', 'user':'Users'}
 
 OPTIONS_MAP = {
     **{val: 'time' for val in TIME_OPTS},

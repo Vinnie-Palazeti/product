@@ -5,28 +5,42 @@ from components.charts import *
 from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import * 
-
+import json
 from db import *
 
 
-# create_and_populate_database("test_metrics.db", num_days = 2000)
+# import os
+# import dill
+# def sample_mmm():
+#     if 'mmm.dill' in os.listdir():
+#         with open('mmm.dill', 'rb') as f:
+#             mmm = dill.load(f)
+#         return mmm
 
+
+# create_and_populate_data("test_metrics.db", num_days = 2000)
 
 # svg for delta
 # different text for table?
 # date picker? custom date?
 
 # another page.. large timeseries metric in the middle.. 
-
-
 # get an actual example up
 # hetzer server
 # nginx IP lockdown
 # google auth
     # but google auth for specific users..
+    
+### ok so I need a dropdown for the metric
+## then a dropdown for the either MMM model fittings
+## or just simple breakdowns
 
 
+### simplify... just do two or three timeperiods of model fits. like two for the dropdown..
+## if it has no dimensions.. then either get rid of button or make it send a popup
 
+
+### FIX percent decrease
 
 
 headers = [
@@ -49,6 +63,11 @@ headers = [
     
     ## theme changer
     Script(src="https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js"),
+    
+    Link(rel='preconnect', href='https://fonts.googleapis.com'),
+    Link(rel='preconnect', href='https://fonts.gstatic.com', crossorigin=True),
+    Link(href='https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap', rel='stylesheet'),
+    Script(type='module', src='https://unpkg.com/cally'),
 
     Style("""
 
@@ -215,7 +234,6 @@ def post(content:DashContent, pressed:str):
 
 @rt("/bar-metric-select")
 def post(content:DashContent, pressed:str):
-    # print(content)
     ## currently using default dimension_list
     bar_data = get_bar_data(kpi=pressed, dimension_list=None, time_period=content.time, comparison_type=content.comparison, period_type=content.group)
     bar_charts = [bar_chart(dim=dim, data=bar_data, kpi=pressed) for dim in KPI_DIMENSIONS.get(pressed)]
@@ -226,21 +244,14 @@ def post(content:DashContent, pressed:str):
         Input(type='hidden', name='bar_kpi', value=pressed, id='bar-kpi-value', hx_swap_oob='outerHTML'),
     )
     
-    
-def render_closer_look(content:DashContent):
-    
-    field='users'
-    
-    ## get all data
+
+def render_closer_look(field:str, time):
     data = get_data(
-        time_period=content.time,
-        comparison_type=content.comparison,
-        period_type=content.group,
+        time_period=time,
+        comparison_type='No Comparison',
+        period_type='Day',
         fields=[field],
     )
-    ## summarize data
-    totals = calculate_totals(results=data)
-    
     dates = [i.get('date') for i in data.get('selected_period')]
     y = [i.get(field) for i in data.get('selected_period')]
     if 'comparison_period' in data:
@@ -248,48 +259,101 @@ def render_closer_look(content:DashContent):
             y, # main data
             [i.get(field) for i in data.get('comparison_period')], # comparison
         )
-    c = embed_line_chart(x=dates, y=y, show_label=True, label_pos='left')    
-    return c
+    out = {'line':embed_line_chart(x=dates, y=y, show_label=True, label_pos='left')}
     
-### what do I need here?
-## I need to lean into the MMM..
-## Overall Time series that we have run experiments on.
-## over the course of a year we are going to have demarkations for experiments
-## vertical lines for changes or blackouts
-
-## when we run the model or an experiment we need to save the results of the parameters
-# datepicker start and end
-
-
-## for 2 metrics
-## for the first,
-    # just copy straight up the MMM from pymc for one metric
-    # then alter slightly for the second metric
+    exps=get_experiments(field)
+    if exps:
+        exp_data = json.loads(exps[0]['data'])
+        ## just take the first one
+        out.update({'bar':channel_contribution_barchart(exp_data['channel_contribution_barchart'])})
+        out.update({'grid':channel_contributions_forward_pass_grid(exp_data['channel_contribution_pass_forward_grid'])})
+        out.update({'area':channel_contributions_over_time(exp_data['channel_contribution_over_time'])})
+        out.update({'Experiments': [i.get('date') for i in exps]})
     
-## if they selected a closer look on a metic with no MMM, just post that 
+    ### GET FIELD/METRIC BREAKDOWNS HERE
+    bar_data = get_bar_data(kpi=field, dimension_list=None, time_period=time, comparison_type='No Comparison', period_type='Day')
+    # {'selected_period': 
+    #     [{'dimension': 'Customer Type', 'category': 'returning', 'total_value': 123839.34, 'dimension_total': 247271.28999999998}, 
+    #      {'dimension': 'Customer Type', 'category': 'new', 'total_value': 123431.95, 'dimension_total': 247271.28999999998}, 
+    #      {'dimension': 'Day of Week', 'category': 'weekday', 'total_value': 124337.67, 'dimension_total': 247973.5}, 
+    #      {'dimension': 'Day of Week', 'category': 'weekend', 'total_value': 123635.83, 'dimension_total': 247973.5}, 
+    #      ...
+    #     ]
+    # }
+    return out
 
-## just mark experiements that occured
-## then put contributions in 4x4 grid below.
+@rt('/closer-look-experiment')
+def post(metric:str, pressed:str):
+    exps=get_experiments(metric)
+    exp_data = json.loads([i for i in exps if i.get('date') == pressed][0]['data'])
+    return (
+        Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")(  
+            Div(cls='col-span-2')(
+                option_closerlook(
+                    value=Span(B(pressed)), 
+                    hx_target='#closer-look-experiments', hx_post='/closer-look-experiment',
+                    id='exp-drop', name='Display', options=[i.get('date') for i in exps])
+            ),
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Contribution Breakdown Over Time', cls='text-lg mb-4'),
+                Div(cls='h-64')(channel_contribution_barchart(exp_data['channel_contribution_barchart']))
+            ),
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Component Decomposition', cls='text-lg mb-4'),
+                Div(cls='h-64')(channel_contributions_forward_pass_grid(exp_data['channel_contribution_pass_forward_grid']))
+            ),
+            Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Component Decomposition', cls='text-lg mb-4'),
+                Div(cls='h-96')(channel_contributions_over_time(exp_data['channel_contribution_over_time']))
+            )
+        )        
+    )
 
+@rt('/closer-look-metric')
+def post(start_date:date, end_date:date, pressed:str=None):
+    charts = render_closer_look(field=pressed, time=TimeRange(start_date=start_date, end_date=end_date))
+    out = (
+        Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")( 
+            Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(Div(cls='h-96')(charts['line']), Input(type='hidden', name='metric', value=pressed)),
+            Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")( 
+                Div(cls='col-span-2')(
+                    option_closerlook(
+                        value=Span(B(charts.get('Experiments')[0])), 
+                        hx_target='#closer-look-experiments', hx_post='/closer-look-experiment', 
+                        id='exp-drop', name='Display', options=charts.get('Experiments'))
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('Contribution Breakdown Over Time', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['bar'])
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('Component Decomposition', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['grid'])
+                ),
+                Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('Component Decomposition', cls='text-lg mb-4'),
+                    Div(cls='h-96')(charts['area'])
+                )
+            )
+        ),         
+    )
+    out += (option_closerlook(value=Span(B(pressed.replace('_',' ').title())), option_grp='metrics', hx_post='/closer-look-metric', hx_target='#closer-look-main-content', hx_swap_oob='outerHTML'), )
+    return out
 
+@rt('/closer-look-date')
+def post(metric:str, start_date:date, end_date:date):
+    charts = render_closer_look(field=metric, time=TimeRange(start_date=start_date, end_date=end_date))
+    return (
+        Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+            Div(cls='h-96')(charts['line']), Input(type='hidden', name='metric', value=metric)
+        )
+    )
 
-
-    
-## investigate impact of MMM on these
-## https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html
-## channel contribution graphs
-# https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html#contribution-recovery
-
-
-## ROAs
-# https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html#roas
-
-
-
-## so pymc 
 @rt("/closer-look")
-def get():
-    content = DashContent()
+def get(metric:str='users'):
+    end_date = datetime.today().date()
+    start_date = end_date - timedelta(days=30)
+    charts = render_closer_look(field=metric, time=TimeRange(start_date=start_date, end_date=end_date))    
     return (
         Title('IndyStats'),
         Body(cls="min-h-screen")(
@@ -298,30 +362,54 @@ def get():
             Script(src="/static/js/oklch-rgb.js"),
             ############ main ############
             Form()(
-                Div(cls="main-content min-h-screen expanded p-5")(
-                    Div(cls='grid grid-cols-8')(
-                        Div(cls='col-span-8 h-144 flex justify-center items-center')(render_closer_look(content)),
-                        Div(cls='col-span-8 flex justify-center items-center')(Span('hi')), 
-                        
-                        # Div(cls='col-span-2 w-full pt-19')(
-                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
-                        #         Input(type='checkbox', cls='peer'),
-                        #         Div('Past Experiments', cls='collapse-title'),
-                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
-                        #     ),
-                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
-                        #         Input(type='checkbox', cls='peer'),
-                        #         Div('How do I create an account?', cls='collapse-title'),
-                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
-                        #     ),
-                        #     Div(cls='bg-base-100 border-base-300 collapse collapse-arrow border')( 
-                        #         Input(type='checkbox', cls='peer'),
-                        #         Div('How do I create an account?', cls='collapse-title'),
-                        #         Div('Click the "Sign Up" button in the top right corner and follow the registration process.', cls='collapse-content')
-                        #     ) 
-                        # )
+                Div(id='main-content-div' ,cls="main-content min-h-screen expanded p-5")(
+                    Div(cls='grid grid-cols-2 gap-2')(     
+                        Div(cls='flex flex-row flex-nowrap gap-2 pb-0 shrink-0')(
+                            option_closerlook(
+                                value=Span(B(metric.replace('_',' ').title())), option_grp='metrics',
+                                hx_target='#closer-look-main-content', hx_swap='outerHTML', hx_post='/closer-look-metric'
+                            ),
+                            Fieldset(cls='fieldset')(
+                                Legend(cls="fieldset-legend")('Start Date'),
+                                Input(type='date', name='start_date', value=start_date, hx_post='/closer-look-date', hx_target='#closer-look-line-chart', hx_swap='outerHTML', cls='input')
+                            ),
+                            Fieldset(cls='fieldset')(
+                                Legend(cls="fieldset-legend")('End Date'),
+                                Input(type='date', name='end_date', value=end_date, hx_post='/closer-look-date', hx_target='#closer-look-line-chart', hx_swap='outerHTML', cls='input')
+                            ),                            
+                        ),
+                        Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")( 
+                            Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                                Div(cls='h-96')(charts['line']),
+                                Input(type='hidden', name='metric', value=metric),
+                            ),
+                            
+                            
+                            ### this is where I need to put the breakdowns.
+                            ### basically if ther are experiments, I want to include those WITH the breakdown charts
+                            ### if there are no experiments I just want the breakdown
+                            Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")(
+                                Div(cls='col-span-2')(
+                                    option_closerlook(
+                                        value=Span(B(charts.get('Experiments')[0])), 
+                                        hx_target='#closer-look-experiments', hx_post='/closer-look-experiment', 
+                                        id='exp-drop', name='Display', options=charts.get('Experiments'))
+                                ),
+                                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                                    H3('Contribution Breakdown Over Time', cls='text-lg mb-4'),
+                                    Div(cls='h-64')(charts['bar'])
+                                ),
+                                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                                    H3('Component Decomposition', cls='text-lg mb-4'),
+                                    Div(cls='h-64')(charts['grid'])
+                                ),
+                                Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                                    H3('Component Decomposition', cls='text-lg mb-4'),
+                                    Div(cls='h-96')(charts['area'])
+                                )
+                            )
+                        )                         
                     ),
-                    
                 )
             ),
         Script(src="/static/js/collapse.js"),
@@ -342,7 +430,7 @@ def get():
         Script(src="/static/js/oklch-rgb.js"),
         ############ main ############
         Form()(
-            Div(cls="main-content min-h-screen expanded p-5")(
+            Div(id='main-content-div', cls="main-content min-h-screen expanded p-5")(
                 options_bar(),
                 Div(cls="grid grid-cols-2", id='metrics-select-container')(
                     Div(cls='flex flex-row gap-x-3 items-center')(

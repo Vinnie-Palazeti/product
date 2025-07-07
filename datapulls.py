@@ -117,10 +117,11 @@ def get_data(
         • kpi
         • total_value
     """
-    # 1. compute the date windows
-    date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
     
-    # 2. choose date vs. month expressions
+    if isinstance(time_period, TimeRange):
+        date_ranges = {'selected_period': time_period}
+    else:
+        date_ranges = get_comparison_dates(time_period, comparison_type, period_type)    
     if period_type == PeriodType.DAILY:
         date_expr = "date"
     else:
@@ -206,8 +207,11 @@ def get_bar_data(
     """
     if not dimension_list:
         dimension_list = list(KPI_DIMENSIONS.get(kpi).keys())
-    # compute the date windows
-    date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
+    if isinstance(time_period, TimeRange):
+        date_ranges = {'selected_period': time_period}
+    else:
+        date_ranges = get_comparison_dates(time_period, comparison_type, period_type)
+        
     # prepare SQL placeholders for dimensions
     dim_ph = ", ".join("?" for _ in dimension_list)
 
@@ -283,3 +287,12 @@ def calculate_totals(
                 acc[key] = acc.get(key, 0.0) + val
         totals[period] = acc
     return totals
+
+
+def get_experiments(metric, database_path:str='test_metrics.db'):
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    data = cur.execute("SELECT * FROM mmm where metric = ? order by date desc", (metric, )).fetchall()
+    
+    return [dict(i) for i in data]
