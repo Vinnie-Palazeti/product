@@ -15,14 +15,6 @@ import pandas as pd
 def channel_contribution_barchart(data):
     labels = data['labels']
     values = data['values']
-
-    # dataframe = mmm.compute_mean_contributions_over_time(original_scale=True)
-    # dataframe = mmm._process_decomposition_components(data=dataframe)
-    
-    # dataframe['percent'] = (dataframe['contribution'] / 100).round(2)
-    # values = dataframe['contribution'].round(2).to_list()
-    # labels = dataframe['component'].to_list()  
-        
     c = (
         Bar()
         .add_xaxis(xaxis_data=labels)
@@ -226,7 +218,7 @@ def area_chart(x, y_data, series_names):
                 axistick_opts=opts.AxisTickOpts(is_show=False),
                 splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90)),
             ),
-            legend_opts=opts.LegendOpts(is_show=True, pos_top="5%")
+            legend_opts=opts.LegendOpts(is_show=True)
         )
     )
     
@@ -287,13 +279,9 @@ def channel_contributions_forward_pass_grid(data):
             symbol=["none", "none"], 
             linestyle_opts=opts.LineStyleOpts(type_="dotted", width=2),
         ),
-    )   
-    
-    # print(data['x_axis'])     
-        
+    )    
     line=(
         line
-        # .set_series_opts(markline_opts=opts.MarkLineOpts(data=[opts.MarkLineItem(x=1.0)], linestyle_opts=opts.LineStyleOpts(type_="dotted", width=2)))
         .set_global_opts(legend_opts=opts.LegendOpts(is_show=False), tooltip_opts=opts.TooltipOpts(trigger="axis", position="top"))
     )
     
@@ -313,9 +301,7 @@ def channel_contributions_forward_pass_grid(data):
     c = embed_chart(grid, connect=False)
     return Div(c[1], id=c[0], cls='w-full h-full')
 
-
-# one thing to note here is the charts only have to be INTERNALLY consistent..
-def embed_chart(chart, color = True, connect= True):
+def embed_chart(chart, color=True, connect=True):
     # needs to be unique, but don't really need it after this
     chart_id = f'{uuid4()}' 
     chart_name = str(chart_id).replace("-","")
@@ -406,6 +392,18 @@ def embed_area_chart(x, y_data, series_names, colors=None, cls='w-full h-full'):
     c = embed_chart(area_chart(x, y_data, series_names, colors))
     return Div(c[1], id=c[0], cls=cls)
 
+def embed_grouped_bar_chart(data, title="Metric Breakdown", cls='w-full h-full'):
+    c = embed_chart(grouped_bar_chart(data, title), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_stacked_area_timeseries(dates, values_dict, title="Time Series", cls='w-full h-full'):
+    c = embed_chart(stacked_area_timeseries(dates, values_dict, title), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_calendar_heatmap(data, year=2024, _max=None, _min=None, cls='w-full h-full'):
+    c = embed_chart(calendar_heatmap_chart(data, year, _max, _min), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
 ## remove decimals if over 1k
 def format_metric(value, dollar):
     if dollar:
@@ -470,6 +468,264 @@ def stat_chart(name, timeseries, totals, show_label):
         ), 
         Div(c, cls="col-span-2", id=f'{name}-chart'))
     )
+
+def grouped_bar_chart(data, title="Metric Breakdown"):
+    """
+    Creates a grouped bar chart from bar_data structure.
+    
+    Args:
+        data: Dictionary with 'selected_period' containing list of:
+              {'dimension': str, 'category': str, 'total_value': float, 'dimension_total': float}
+        title: Chart title
+    """
+    # Process data to group by dimension
+    dimensions = {}
+    for item in data.get('selected_period', []):
+        dim = item['dimension']
+        cat = item['category']
+        val = item['total_value']
+        
+        if dim not in dimensions:
+            dimensions[dim] = {'categories': [], 'values': []}
+        dimensions[dim]['categories'].append(cat)
+        dimensions[dim]['values'].append(val)
+    
+    # Create the bar chart
+    c = Bar()
+    
+    # Add x-axis (use categories from first dimension)
+    first_dim = list(dimensions.keys())[0] if dimensions else None
+    if first_dim:
+        c = c.add_xaxis(xaxis_data=dimensions[first_dim]['categories'])
+    
+    # Add each dimension as a series
+    for dim_name, dim_data in dimensions.items():
+        c = c.add_yaxis(
+            series_name=dim_name,
+            y_axis=dim_data['values'],
+            label_opts=opts.LabelOpts(is_show=False, position="top")
+        )
+    
+    c = (
+        c.set_global_opts(
+            legend_opts=opts.LegendOpts(is_show=True),
+            tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
+            xaxis_opts=opts.AxisOpts(
+                axislabel_opts=opts.LabelOpts(rotate=-45)
+            ),
+            yaxis_opts=opts.AxisOpts(
+                type_="value",
+                axisline_opts=opts.AxisLineOpts(is_show=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90))
+            )
+        )
+    )
+    return c
+
+def stacked_area_timeseries(dates, values_dict, title="Time Series"):
+    """
+    Creates a stacked area chart for time series data.
+    
+    Args:
+        dates: List of date strings
+        values_dict: Dictionary with series_name -> list of values
+        title: Chart title
+    """
+    c = (
+        Line()
+        .add_xaxis(xaxis_data=dates)
+    )
+    
+    for series_name, values in values_dict.items():
+        c = c.add_yaxis(
+            series_name=series_name,
+            y_axis=values,
+            stack="total",
+            areastyle_opts=opts.AreaStyleOpts(opacity=0.6),
+            symbol="emptyCircle",
+            is_symbol_show=False,
+            label_opts=opts.LabelOpts(is_show=False)
+        )
+    
+    c = (
+        c.set_global_opts(
+            tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
+            legend_opts=opts.LegendOpts(is_show=True),
+            xaxis_opts=opts.AxisOpts(
+                type_="category",
+                boundary_gap=False,
+                axisline_opts=opts.AxisLineOpts(is_show=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90))
+            ),
+            yaxis_opts=opts.AxisOpts(
+                type_="value",
+                axisline_opts=opts.AxisLineOpts(is_show=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=True, linestyle_opts=opts.LineStyleOpts(opacity=0.90))
+            )
+        )
+    )
+    return c
+
+def calendar_heatmap_chart(data, year=2024, _max=None, _min=None):
+    """
+    Creates a calendar heatmap chart.
+    
+    Args:
+        data: List of [date_string, value] pairs
+        year: Year for the calendar
+        title: Chart title
+    """
+    # print(data)
+    from pyecharts.charts import Calendar
+    
+    c = (
+        Calendar()
+        .add(
+            series_name="",
+            yaxis_data=data,
+            calendar_opts=opts.CalendarOpts(
+                pos_top="50",
+                pos_left="30",
+                pos_right="30",
+                range_=str(year),
+                yearlabel_opts=opts.CalendarYearLabelOpts(is_show=True)
+            )
+        )
+        .set_global_opts(
+            visualmap_opts=opts.VisualMapOpts(
+                max_=_max,  
+                min_=_min, 
+                orient="horizontal",
+                is_piecewise=False,
+                pos_top="230px",
+                # pos_left="100px"
+            )
+        )
+    )
+    return c
+
+def waterfall_chart():
+    """Waterfall chart with fake data"""
+    x_data = ["Nov 1", "Nov 2", "Nov 3", "Nov 4", "Nov 5", "Nov 6", "Nov 7", "Nov 8", "Nov 9", "Nov 10", "Nov 11"]
+    y_total = [0, 900, 1245, 1530, 1376, 1376, 1511, 1689, 1856, 1495, 1292]
+    y_in = [900, 345, 393, "-", "-", 135, 178, 286, "-", "-", "-"]
+    y_out = ["-", "-", "-", 108, 154, "-", "-", "-", 119, 361, 203]
+
+    c = (
+        Bar()
+        .add_xaxis(xaxis_data=x_data)
+        .add_yaxis(series_name="", y_axis=y_total, stack="total", itemstyle_opts=opts.ItemStyleOpts(color="rgba(0,0,0,0)"))
+        .add_yaxis(series_name="Income", y_axis=y_in, stack="total")
+        .add_yaxis(series_name="Expense", y_axis=y_out, stack="total")
+        .set_global_opts(
+            yaxis_opts=opts.AxisOpts(type_="value"),
+            legend_opts=opts.LegendOpts(is_show=True)
+        )
+    )
+    return c
+
+def horizontal_bar_chart():
+    """Horizontal bar chart with fake data"""
+    categories = ["Category A", "Category B", "Category C", "Category D", "Category E"]
+    values_a = [120, 200, 150, 80, 70]
+    values_b = [20, 50, 80, 120, 110]
+    
+    c = (
+        Bar()
+        .add_xaxis(xaxis_data=categories)
+        .add_yaxis("Series A", values_a)
+        .add_yaxis("Series B", values_b)
+        .reversal_axis()
+        .set_series_opts(label_opts=opts.LabelOpts(position="right"))
+        .set_global_opts(legend_opts=opts.LegendOpts(is_show=True))
+    )
+    return c
+
+def basic_area_chart():
+    """Basic area chart with fake data"""
+    x_data = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    y_data = [820, 932, 901, 934, 1290, 1330, 1320]
+
+    c = (
+        Line()
+        .add_xaxis(xaxis_data=x_data)
+        .add_yaxis(
+            series_name="Daily Values",
+            y_axis=y_data,
+            symbol="emptyCircle",
+            is_symbol_show=True,
+            label_opts=opts.LabelOpts(is_show=False),
+            areastyle_opts=opts.AreaStyleOpts(opacity=0.7, color="#C67570"),
+        )
+        .set_global_opts(
+            tooltip_opts=opts.TooltipOpts(is_show=True),
+            legend_opts=opts.LegendOpts(is_show=False),
+            yaxis_opts=opts.AxisOpts(
+                type_="value",
+                axistick_opts=opts.AxisTickOpts(is_show=True),
+                splitline_opts=opts.SplitLineOpts(is_show=True),
+            ),
+            xaxis_opts=opts.AxisOpts(type_="category", boundary_gap=False),
+        )
+    )
+    return c
+
+def stacked_bar_chart():
+    """Stacked bar chart with fake data"""
+    categories = ["Q1", "Q2", "Q3", "Q4"]
+    
+    c = (
+        Bar()
+        .add_xaxis(xaxis_data=categories)
+        .add_yaxis("Product A", [120, 132, 101, 134], stack="stack1")
+        .add_yaxis("Product B", [220, 182, 191, 234], stack="stack1")
+        .add_yaxis("Product C", [150, 232, 201, 154], stack="stack1")
+        .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+        .set_global_opts(legend_opts=opts.LegendOpts(is_show=True))
+    )
+    return c
+
+def scatter_chart():
+    """Scatter chart with fake data"""
+    scatter_data = [[10.0, 8.04], [8.0, 6.95], [13.0, 7.58], [9.0, 8.81], [11.0, 8.33], 
+                   [14.0, 9.96], [6.0, 7.24], [4.0, 4.26], [12.0, 10.84], [7.0, 4.82], [5.0, 5.68]]
+    
+    from pyecharts.charts import Scatter
+    c = (
+        Scatter()
+        .add_xaxis([i[0] for i in scatter_data])
+        .add_yaxis("Sales vs Profit", [i[1] for i in scatter_data])
+        .set_global_opts(
+            legend_opts=opts.LegendOpts(is_show=False),
+            xaxis_opts=opts.AxisOpts(name="Sales"),
+            yaxis_opts=opts.AxisOpts(name="Profit")
+        )
+    )
+    return c
+
+# Embed functions for new charts
+def embed_waterfall_chart(cls='w-full h-full'):
+    c = embed_chart(waterfall_chart(), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_horizontal_bar_chart(cls='w-full h-full'):
+    c = embed_chart(horizontal_bar_chart(), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_basic_area_chart(cls='w-full h-full'):
+    c = embed_chart(basic_area_chart(), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_stacked_bar_chart(cls='w-full h-full'):
+    c = embed_chart(stacked_bar_chart(), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
+
+def embed_scatter_chart(cls='w-full h-full'):
+    c = embed_chart(scatter_chart(), connect=False)
+    return Div(c[1], id=c[0], cls=cls)
     
 def bar_row(name, value, perc_change, perc_width, top:bool=False):
     if perc_change:

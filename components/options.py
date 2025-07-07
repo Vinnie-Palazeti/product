@@ -167,7 +167,13 @@ def sidebar():
 def top_navbar():
     return Div(cls='navbar bg-base-100 shadow-sm w-full')(
         Div(cls='flex-1')(
-            # A('MyApp', cls='btn btn-ghost normal-case text-xl')
+            # Logo that adapts to sidebar state
+            Div(cls='navbar-logo-container')(
+            # Div(cls='navbar-logo-container')(
+                A(href='/', cls='flex items-center hover:opacity-80 transition-opacity')(
+                    Img(src='/static/assets/logo.png', alt='Logo', cls='h-8 w-auto navbar-logo')
+                )
+            )
         ),
         Div(cls='flex-none')(
             ## theme palette

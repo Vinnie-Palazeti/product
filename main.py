@@ -6,23 +6,8 @@ from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import * 
 import json
+import random
 from db import *
-
-
-# import os
-# import dill
-# def sample_mmm():
-#     if 'mmm.dill' in os.listdir():
-#         with open('mmm.dill', 'rb') as f:
-#             mmm = dill.load(f)
-#         return mmm
-
-
-# create_and_populate_data("test_metrics.db", num_days = 2000)
-
-# svg for delta
-# different text for table?
-# date picker? custom date?
 
 # another page.. large timeseries metric in the middle.. 
 # get an actual example up
@@ -30,17 +15,11 @@ from db import *
 # nginx IP lockdown
 # google auth
     # but google auth for specific users..
-    
-### ok so I need a dropdown for the metric
-## then a dropdown for the either MMM model fittings
-## or just simple breakdowns
 
 
-### simplify... just do two or three timeperiods of model fits. like two for the dropdown..
-## if it has no dimensions.. then either get rid of button or make it send a popup
+## daisyui default user theme...
+## NOW I need to handle AUTH..
 
-
-### FIX percent decrease
 
 
 headers = [
@@ -95,6 +74,20 @@ headers = [
         .main-content.expanded {
             margin-left: 80px;
             width: calc(100% - 80px);
+        }
+        
+        /* Navbar logo positioning */
+        .navbar-logo-container {
+            margin-left: 250px;
+            transition: margin-left 0.3s ease;
+        }        
+        
+        /* Mobile responsive adjustments */
+        @media (max-width: 768px) {
+            .navbar-logo-container {
+                margin-left: 0px !important;
+                padding-left: 1rem;
+            }
         }
         
         /* Container for content - prevent overflow */
@@ -261,25 +254,63 @@ def render_closer_look(field:str, time):
         )
     out = {'line':embed_line_chart(x=dates, y=y, show_label=True, label_pos='left')}
     
+    ### GET FIELD/METRIC BREAKDOWNS HERE
+    bar_data = get_bar_data(kpi=field, dimension_list=None, time_period=time, comparison_type='No Comparison', period_type='Day')
+    
+    # Add basic charts that work for all metrics
+    if bar_data and bar_data.get('selected_period'):
+        # Add grouped bar chart for metric breakdowns
+        out.update({'grouped_bar': embed_grouped_bar_chart(bar_data, f"{field.replace('_', ' ').title()} Breakdown")})
+        
+        # Create stacked area chart data - split by first two dimensions
+        dimensions = {}
+        for item in bar_data.get('selected_period', []):
+            dim = item['dimension']
+            cat = item['category']
+            val = item['total_value']
+            
+            if dim not in dimensions:
+                dimensions[dim] = {}
+            dimensions[dim][cat] = val
+        
+        if len(dimensions) >= 2:
+            # Create time series data for stacked area (simulate daily breakdown)
+            stacked_data = {}
+            for dim_name, categories in list(dimensions.items())[:2]:  # Take first two dimensions
+                for cat_name, total_val in categories.items():
+                    series_name = f"{dim_name}: {cat_name}"
+                    # Simulate daily values that sum to total
+                    daily_vals = [total_val / len(dates) * (1 + 0.1 * (i % 7 - 3)) for i in range(len(dates))]
+                    stacked_data[series_name] = daily_vals
+            
+            out.update({'stacked_area': embed_stacked_area_timeseries(dates, stacked_data, f"{field.replace('_', ' ').title()} Composition")})
+        
+        # Create calendar heatmap data - get full year's data
+        year = int(dates[0].split('-')[0]) if dates else 2024
+        year_start = date(year, 1, 1)
+        year_end = date(year, 12, 31)
+        year_data = get_data(
+            time_period=TimeRange(start_date=year_start, end_date=year_end),
+            comparison_type='No Comparison',
+            period_type='Day',
+            fields=[field],
+        )
+        if year_data and year_data.get('selected_period'):
+            year_dates = [i.get('date') for i in year_data.get('selected_period')]
+            year_values = [i.get(field) for i in year_data.get('selected_period')]
+            calendar_data = [[date, val] for date, val in zip(year_dates, year_values)]
+            out.update({'calendar': embed_calendar_heatmap(calendar_data, year, max(year_values), min(year_values))})
+    
+    # Add MMM experiments if available
     exps=get_experiments(field)
     if exps:
         exp_data = json.loads(exps[0]['data'])
         ## just take the first one
-        out.update({'bar':channel_contribution_barchart(exp_data['channel_contribution_barchart'])})
-        out.update({'grid':channel_contributions_forward_pass_grid(exp_data['channel_contribution_pass_forward_grid'])})
-        out.update({'area':channel_contributions_over_time(exp_data['channel_contribution_over_time'])})
+        out.update({'mmm_bar':channel_contribution_barchart(exp_data['channel_contribution_barchart'])})
+        out.update({'mmm_grid':channel_contributions_forward_pass_grid(exp_data['channel_contribution_pass_forward_grid'])})
+        out.update({'mmm_area':channel_contributions_over_time(exp_data['channel_contribution_over_time'])})
         out.update({'Experiments': [i.get('date') for i in exps]})
     
-    ### GET FIELD/METRIC BREAKDOWNS HERE
-    bar_data = get_bar_data(kpi=field, dimension_list=None, time_period=time, comparison_type='No Comparison', period_type='Day')
-    # {'selected_period': 
-    #     [{'dimension': 'Customer Type', 'category': 'returning', 'total_value': 123839.34, 'dimension_total': 247271.28999999998}, 
-    #      {'dimension': 'Customer Type', 'category': 'new', 'total_value': 123431.95, 'dimension_total': 247271.28999999998}, 
-    #      {'dimension': 'Day of Week', 'category': 'weekday', 'total_value': 124337.67, 'dimension_total': 247973.5}, 
-    #      {'dimension': 'Day of Week', 'category': 'weekend', 'total_value': 123635.83, 'dimension_total': 247973.5}, 
-    #      ...
-    #     ]
-    # }
     return out
 
 @rt('/closer-look-experiment')
@@ -312,9 +343,49 @@ def post(metric:str, pressed:str):
 @rt('/closer-look-metric')
 def post(start_date:date, end_date:date, pressed:str=None):
     charts = render_closer_look(field=pressed, time=TimeRange(start_date=start_date, end_date=end_date))
-    out = (
-        Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")( 
-            Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(Div(cls='h-96')(charts['line']), Input(type='hidden', name='metric', value=pressed)),
+    
+    # Create the main content div
+    main_content = [
+        Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+            Div(cls='h-96')(charts['line']), 
+            Input(type='hidden', name='metric', value=pressed)
+        )
+    ]
+    
+    # Add basic charts section
+    basic_charts = []
+    if 'grouped_bar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Metric Breakdown', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['grouped_bar'])
+            )
+        )
+    
+    if 'stacked_area' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Composition Over Time', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['stacked_area'])
+            )
+        )
+    
+    if 'calendar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Calendar View', cls='text-lg mb-4'),
+                Div(cls='h-96')(charts['calendar'])
+            )
+        )
+    
+    if basic_charts:
+        main_content.append(
+            Div(id='closer-look-basic-charts', cls="grid grid-cols-2 gap-2 col-span-2")(*basic_charts)
+        )
+    
+    # Add MMM experiments section if available
+    if 'Experiments' in charts:
+        main_content.append(
             Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")( 
                 Div(cls='col-span-2')(
                     option_closerlook(
@@ -323,37 +394,164 @@ def post(start_date:date, end_date:date, pressed:str=None):
                         id='exp-drop', name='Display', options=charts.get('Experiments'))
                 ),
                 Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
-                    H3('Contribution Breakdown Over Time', cls='text-lg mb-4'),
-                    Div(cls='h-64')(charts['bar'])
+                    H3('MMM Contribution Breakdown', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_bar'])
                 ),
                 Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
-                    H3('Component Decomposition', cls='text-lg mb-4'),
-                    Div(cls='h-64')(charts['grid'])
+                    H3('MMM Component Decomposition', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_grid'])
                 ),
                 Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
-                    H3('Component Decomposition', cls='text-lg mb-4'),
-                    Div(cls='h-96')(charts['area'])
+                    H3('MMM Contributions Over Time', cls='text-lg mb-4'),
+                    Div(cls='h-96')(charts['mmm_area'])
                 )
             )
-        ),         
-    )
+        )
+    
+    out = (Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")(*main_content),)
     out += (option_closerlook(value=Span(B(pressed.replace('_',' ').title())), option_grp='metrics', hx_post='/closer-look-metric', hx_target='#closer-look-main-content', hx_swap_oob='outerHTML'), )
     return out
 
 @rt('/closer-look-date')
 def post(metric:str, start_date:date, end_date:date):
     charts = render_closer_look(field=metric, time=TimeRange(start_date=start_date, end_date=end_date))
-    return (
+    
+    # Create the main content div (re-render everything except experiments)
+    main_content = [
         Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
-            Div(cls='h-96')(charts['line']), Input(type='hidden', name='metric', value=metric)
+            Div(cls='h-96')(charts['line']), 
+            Input(type='hidden', name='metric', value=metric)
         )
-    )
+    ]
+    
+    # Add basic charts section
+    basic_charts = []
+    if 'grouped_bar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Metric Breakdown', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['grouped_bar'])
+            )
+        )
+    
+    if 'stacked_area' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Composition Over Time', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['stacked_area'])
+            )
+        )
+    
+    if 'calendar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Calendar View', cls='text-lg mb-4'),
+                Div(cls='h-96')(charts['calendar'])
+            )
+        )
+    
+    if basic_charts:
+        main_content.append(
+            Div(id='closer-look-basic-charts', cls="grid grid-cols-2 gap-2 col-span-2")(*basic_charts)
+        )
+    
+    # Keep existing experiments section if it exists (don't re-render)
+    if 'Experiments' in charts:
+        main_content.append(
+            Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")( 
+                Div(cls='col-span-2')(
+                    option_closerlook(
+                        value=Span(B(charts.get('Experiments')[0])), 
+                        hx_target='#closer-look-experiments', hx_post='/closer-look-experiment', 
+                        id='exp-drop', name='Display', options=charts.get('Experiments'))
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Contribution Breakdown', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_bar'])
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Component Decomposition', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_grid'])
+                ),
+                Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Contributions Over Time', cls='text-lg mb-4'),
+                    Div(cls='h-96')(charts['mmm_area'])
+                )
+            )
+        )
+    
+    return Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")(*main_content)
 
 @rt("/closer-look")
 def get(metric:str='users'):
     end_date = datetime.today().date()
     start_date = end_date - timedelta(days=30)
     charts = render_closer_look(field=metric, time=TimeRange(start_date=start_date, end_date=end_date))    
+    
+    # Create the main content
+    main_content = [
+        Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+            Div(cls='h-96')(charts['line']),
+            Input(type='hidden', name='metric', value=metric),
+        )
+    ]
+    
+    # Add basic charts section
+    basic_charts = []
+    if 'grouped_bar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Metric Breakdown', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['grouped_bar'])
+            )
+        )
+    
+    if 'stacked_area' in charts:
+        basic_charts.append(
+            Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Composition Over Time', cls='text-lg mb-4'),
+                Div(cls='h-64')(charts['stacked_area'])
+            )
+        )
+    
+    if 'calendar' in charts:
+        basic_charts.append(
+            Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                H3('Calendar View', cls='text-lg mb-4'),
+                Div(cls='h-96')(charts['calendar'])
+            )
+        )
+    
+    if basic_charts:
+        main_content.append(
+            Div(id='closer-look-basic-charts', cls="grid grid-cols-2 gap-2 col-span-2")(*basic_charts)
+        )
+    
+    # Add MMM experiments section if available
+    if 'Experiments' in charts:
+        main_content.append(
+            Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")(
+                Div(cls='col-span-2')(
+                    option_closerlook(
+                        value=Span(B(charts.get('Experiments')[0])), 
+                        hx_target='#closer-look-experiments', hx_post='/closer-look-experiment', 
+                        id='exp-drop', name='Display', options=charts.get('Experiments'))
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Contribution Breakdown', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_bar'])
+                ),
+                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Component Decomposition', cls='text-lg mb-4'),
+                    Div(cls='h-64')(charts['mmm_grid'])
+                ),
+                Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
+                    H3('MMM Contributions Over Time', cls='text-lg mb-4'),
+                    Div(cls='h-96')(charts['mmm_area'])
+                )
+            )
+        )
+    
     return (
         Title('IndyStats'),
         Body(cls="min-h-screen")(
@@ -371,44 +569,14 @@ def get(metric:str='users'):
                             ),
                             Fieldset(cls='fieldset')(
                                 Legend(cls="fieldset-legend")('Start Date'),
-                                Input(type='date', name='start_date', value=start_date, hx_post='/closer-look-date', hx_target='#closer-look-line-chart', hx_swap='outerHTML', cls='input')
+                                Input(type='date', name='start_date', value=start_date, hx_post='/closer-look-date', hx_target='#closer-look-main-content', hx_swap='outerHTML', cls='input')
                             ),
                             Fieldset(cls='fieldset')(
                                 Legend(cls="fieldset-legend")('End Date'),
-                                Input(type='date', name='end_date', value=end_date, hx_post='/closer-look-date', hx_target='#closer-look-line-chart', hx_swap='outerHTML', cls='input')
+                                Input(type='date', name='end_date', value=end_date, hx_post='/closer-look-date', hx_target='#closer-look-main-content', hx_swap='outerHTML', cls='input')
                             ),                            
                         ),
-                        Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")( 
-                            Div(id='closer-look-line-chart', cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
-                                Div(cls='h-96')(charts['line']),
-                                Input(type='hidden', name='metric', value=metric),
-                            ),
-                            
-                            
-                            ### this is where I need to put the breakdowns.
-                            ### basically if ther are experiments, I want to include those WITH the breakdown charts
-                            ### if there are no experiments I just want the breakdown
-                            Div(id='closer-look-experiments', cls="grid grid-cols-2 gap-2 col-span-2")(
-                                Div(cls='col-span-2')(
-                                    option_closerlook(
-                                        value=Span(B(charts.get('Experiments')[0])), 
-                                        hx_target='#closer-look-experiments', hx_post='/closer-look-experiment', 
-                                        id='exp-drop', name='Display', options=charts.get('Experiments'))
-                                ),
-                                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
-                                    H3('Contribution Breakdown Over Time', cls='text-lg mb-4'),
-                                    Div(cls='h-64')(charts['bar'])
-                                ),
-                                Div(cls='col-span-1 bg-base-100 p-4 rounded-lg shadow')(
-                                    H3('Component Decomposition', cls='text-lg mb-4'),
-                                    Div(cls='h-64')(charts['grid'])
-                                ),
-                                Div(cls='col-span-2 bg-base-100 p-4 rounded-lg shadow')(
-                                    H3('Component Decomposition', cls='text-lg mb-4'),
-                                    Div(cls='h-96')(charts['area'])
-                                )
-                            )
-                        )                         
+                        Div(id='closer-look-main-content', cls="grid grid-cols-2 gap-2 col-span-2")(*main_content)                       
                     ),
                 )
             ),
@@ -417,6 +585,146 @@ def get(metric:str='users'):
         )
     )    
 
+
+def generate_random_chart():
+    """Generate a random chart using available data and chart types"""
+    # Available chart types (mix of data-driven and fake data charts)
+    chart_types = [
+        'line', 'grouped_bar', 'stacked_area_timeseries',  # Data-driven charts
+        'waterfall', 'horizontal_bar', 'basic_area', 'stacked_bar', 'scatter'  # Fake data charts
+    ]
+    
+    chart_type = random.choice(chart_types)
+    
+    try:
+        # Fake data charts (no real data needed)
+        if chart_type == 'waterfall':
+            return embed_waterfall_chart()
+        elif chart_type == 'horizontal_bar':
+            return embed_horizontal_bar_chart()
+        elif chart_type == 'basic_area':
+            return embed_basic_area_chart()
+        elif chart_type == 'stacked_bar':
+            return embed_stacked_bar_chart()
+        elif chart_type == 'scatter':
+            return embed_scatter_chart()
+        
+        # Data-driven charts
+        else:
+            metrics = ['revenue', 'expenses', 'new_users', 'returning_users']
+            metric = random.choice(metrics)
+            time_periods = ['Last 14 Days', 'Last 30 Days', 'Last 90 Days']
+            time_period = random.choice(time_periods)
+            
+            if chart_type == 'line':
+                data = get_data(
+                    time_period=time_period,
+                    comparison_type='No Comparison',
+                    period_type='Day',
+                    fields=[metric],
+                )
+                if data and data.get('selected_period'):
+                    dates = [i.get('date') for i in data.get('selected_period')]
+                    y = [i.get(metric) for i in data.get('selected_period')]
+                    return embed_line_chart(x=dates, y=y, show_label=True, name=metric.replace('_', ' ').title())
+            
+            elif chart_type == 'grouped_bar':
+                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
+                if bar_data and bar_data.get('selected_period'):
+                    return embed_grouped_bar_chart(bar_data, f"{metric.replace('_', ' ').title()} Breakdown")
+            
+            elif chart_type == 'stacked_area_timeseries':
+                data = get_data(
+                    time_period=time_period,
+                    comparison_type='No Comparison',
+                    period_type='Day',
+                    fields=[metric],
+                )
+                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
+                
+                if data and bar_data and bar_data.get('selected_period'):
+                    dates = [i.get('date') for i in data.get('selected_period')]
+                    dimensions = {}
+                    for item in bar_data.get('selected_period', [])[:6]:
+                        dim = item['dimension']
+                        cat = item['category']
+                        val = item['total_value']
+                        
+                        if dim not in dimensions:
+                            dimensions[dim] = {}
+                        dimensions[dim][cat] = val
+                    
+                    if len(dimensions) >= 1:
+                        stacked_data = {}
+                        for dim_name, categories in list(dimensions.items())[:2]:
+                            for cat_name, total_val in categories.items():
+                                series_name = f"{cat_name}"
+                                daily_vals = [total_val / len(dates) * (1 + 0.1 * (i % 7 - 3)) for i in range(len(dates))]
+                                stacked_data[series_name] = daily_vals
+                        
+                        if stacked_data:
+                            return embed_stacked_area_timeseries(dates, stacked_data, f"{metric.replace('_', ' ').title()} Composition")
+    
+    except Exception as e:
+        print(f"Error generating chart: {e}")
+    
+    # Final fallback: return a simple fake chart
+    return embed_basic_area_chart()
+
+@rt("/random")
+def get():
+    # Generate 10 random charts
+    charts = [generate_random_chart() for _ in range(10)]
+    
+    return (
+        Body(cls="min-h-screen bg-gray-50")(
+            sidebar(),
+            top_navbar(),
+            Script(src="/static/js/oklch-rgb.js"),
+            Div(id='main-content-div', cls="main-content min-h-screen expanded p-6")(
+                # Bento-style grid layout
+                Div(cls="grid grid-cols-4 grid-rows-4 gap-4 h-screen max-h-[1000px]")(
+                    Div(cls="col-span-2 row-span-2 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[0])),
+                    Div(cls="col-span-1 row-span-2 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[1])),
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[2])),
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[3])),
+                    Div(cls="col-span-2 row-span-1 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[4])),
+                    
+                    # Small chart (1x1)
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(Div(cls="h-full")(charts[5])),
+                    
+                    # Small chart (1x1)
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(
+                        Div(cls="h-full")(charts[6])
+                    ),
+                    
+                    # Medium wide chart (2x1)
+                    Div(cls="col-span-2 row-span-1 bg-white rounded-lg shadow-lg p-4")(
+                        Div(cls="h-full")(charts[7])
+                    ),
+                    
+                    # Small chart (1x1)
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(
+                        Div(cls="h-full")(charts[8])
+                    ),
+                    
+                    # Small chart (1x1)
+                    Div(cls="col-span-1 row-span-1 bg-white rounded-lg shadow-lg p-4")(
+                        Div(cls="h-full")(charts[9])
+                    ),
+                ),
+                
+                # Refresh button
+                Div(cls="mt-8 text-center")(
+                    A("🎲 Generate New Random Charts", 
+                      href="/random", 
+                      cls="inline-block bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-lg")
+                )
+            ),
+            Script(src="/static/js/collapse.js"),
+            Script(src="/static/js/chart-color.js")
+        )
+    )
 
 @rt("/")
 def get():
