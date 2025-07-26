@@ -93,20 +93,11 @@ def _option(value:str, option_grp:str, anchor:int, hx_swap_oob=False, options=[]
     )
     return Fieldset(cls='fieldset', id=f'option-{option_grp}', hx_swap_oob=hx_swap_oob)(Legend(cls='fieldset-legend pb-0')(OPTION_LABEL_MAP.get(option_grp)), _select_menu)
 
-
 def options_bar(dates:str='Last 14 Days', comparison:str='No Comparison', group:str='Day'):
-    
     t_select = _option(value=Span(B(dates)), option_grp='time', anchor=OPTION_ANCHOR_MAP.get('time'))
     c_select = _option(value=Span(B(comparison)), option_grp='comparison', anchor=OPTION_ANCHOR_MAP.get('comparison'))
     g_select = _option(value=Span('Metrics By ', B(group)), option_grp='group', anchor=OPTION_ANCHOR_MAP.get('group'))
-    
-    return (
-        Div(cls='flex flex-row flex-nowrap gap-2 pb-3 shrink-0')(
-            t_select,
-            c_select,
-            g_select
-        )        
-    )
+    return (Div(cls='flex flex-row flex-nowrap gap-2 pb-3 shrink-0')(t_select, c_select, g_select))
 
 def sidebar():
     return (
@@ -186,12 +177,12 @@ def top_navbar():
                 ),
                 Div(tabindex='0', cls='mt-3 card card-compact dropdown-content w-52 bg-base-100 shadow-lg')(
                     Div(cls='card-body')(
-                        Input(type='radio', name='theme-buttons', aria_label='Default', value='default', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', checked="checked", aria_label='Light', value='default', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Dark', value='dark', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Retro', value='retro', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Cyberpunk', value='cyberpunk', cls='btn theme-controller join-item'),
                         Input(type='radio', name='theme-buttons', aria_label='Luxury', value='luxury', cls='btn theme-controller join-item'),
-                        Input(type='radio', name='theme-buttons', aria_label='Bumblebee', value='bumblebee', cls='btn theme-controller join-item')
+                        
+                        Input(type='radio', name='theme-buttons', aria_label='Nord', value='nord', cls='btn theme-controller join-item'),
+                        Input(type='radio', name='theme-buttons', aria_label='Lofi', value='lofi', cls='btn theme-controller join-item')
                     )
                 )
             ),
@@ -210,14 +201,9 @@ def top_navbar():
                     )
                 ),
                 Ul(tabindex='0', cls='menu menu-sm dropdown-content mt-3 p-2 shadow bg-base-100 rounded-box w-52')(
-                    Li(
-                        A('Profile')
-                    ),
-                    Li(
-                        A('Settings')
-                    ),
-                    Li(
-                        A('Logout')
+                    Li(A('Profile')),
+                    Li(A('Settings')),
+                    Li(A('Logout')
                     )
                 )
             )

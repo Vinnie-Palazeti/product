@@ -93,7 +93,8 @@ def line_chart(x, y, show_label=False, label_pos='right', name=""):
                 y_axis=y,
                 symbol="emptyCircle",
                 is_symbol_show=False,
-                label_opts=opts.LabelOpts(is_show=False)
+                label_opts=opts.LabelOpts(is_show=False),
+                areastyle_opts=opts.AreaStyleOpts(opacity=0.1),
             )
             .add_yaxis(
                 series_name="comparison",
@@ -102,7 +103,8 @@ def line_chart(x, y, show_label=False, label_pos='right', name=""):
                 is_symbol_show=False,
                 label_opts=opts.LabelOpts(is_show=False, color='rgb(68, 158, 255)'),
                 linestyle_opts=opts.LineStyleOpts(color="rgb(68, 158, 255)"),
-                itemstyle_opts=opts.ItemStyleOpts(color="rgb(68, 158, 255)")          
+                itemstyle_opts=opts.ItemStyleOpts(color="rgb(68, 158, 255)"),
+                areastyle_opts=opts.AreaStyleOpts(opacity=0.1)     
             )
         )
     else:
@@ -117,7 +119,8 @@ def line_chart(x, y, show_label=False, label_pos='right', name=""):
                 y_axis=y,
                 symbol="emptyCircle",
                 is_symbol_show=False,
-                label_opts=opts.LabelOpts(is_show=False)
+                label_opts=opts.LabelOpts(is_show=False),
+                areastyle_opts=opts.AreaStyleOpts(opacity=0.1),
             )       
             
         )       
@@ -306,6 +309,7 @@ def embed_chart(chart, color=True, connect=True):
     chart_id = f'{uuid4()}' 
     chart_name = str(chart_id).replace("-","")
     options = chart if isinstance(chart,str) else chart.dump_options()
+    # print(options)
     chart_script = fr"""                          
         var chart_{chart_name} = echarts.init(document.getElementById('{chart_id}'), 'white', {{renderer: 'canvas'}});
         var option_{chart_name} = {options};
@@ -343,6 +347,9 @@ def embed_chart(chart, color=True, connect=True):
             // Step 5: Format as CSS rgb() string
             return `rgb(${{rgb255[0]}}, ${{rgb255[1]}}, ${{rgb255[2]}})`;
         }} 
+        function toTransparent(rgb, alpha = 0.1) {{
+            return rgb.replace('rgb(', 'rgba(').replace(')', `, ${{alpha}})`);
+        }}
         
         var colors = [
             cssOklchToRgb('--color-primary'),
@@ -370,7 +377,25 @@ def embed_chart(chart, color=True, connect=True):
             return {{
                 ...s,
                 lineStyle: {{ ...(s.lineStyle || {{}}), color }},
-                itemStyle: {{ ...(s.itemStyle || {{}}), color }}
+                itemStyle: {{ ...(s.itemStyle || {{}}), color }},
+                
+                areaStyle: {{
+                    color: {{
+                        type: 'linear',
+                        x: 0, y: 0, x2: 0, y2: 1,
+                        colorStops: [
+                            {{
+                                offset: 0,
+                                color: color
+                            }},
+                            {{
+                                offset: 1,
+                                color: toTransparent(color, 0.2)
+                            }}
+                        ]
+                    }}
+                }}                
+                                
             }};
         }});
 
@@ -384,7 +409,7 @@ def embed_chart(chart, color=True, connect=True):
         """
     return chart_id, Script(chart_script), chart_name
 
-def embed_line_chart(x, y, show_label, label_pos='right', name="", cls='w-full h-full'): # flex justify-center items-center
+def embed_line_chart(x, y, show_label, label_pos='right', name="", cls='w-full h-full'): 
     c = embed_chart(line_chart(x, y, show_label, label_pos, name))
     return Div(c[1], id=c[0], cls=cls)
 
@@ -458,6 +483,7 @@ def stat_chart(name, timeseries, totals, show_label):
             y, # main data
             [i.get(name) for i in timeseries.get('comparison_period')], # comparison
         )
+        
     c = embed_line_chart(x=dates, y=y, show_label=show_label, name=name)
     return (
         Div(id=f'metric-container-{name}', cls="contents")( ## this is a wrapper. display:contents -> element itself disappears and children styling  & layout is displayed
@@ -783,3 +809,91 @@ def bar_chart(data, kpi:str=None, dim:str=None):
         )
     )
     
+
+
+def generate_random_chart():
+    from datapulls import get_data, get_bar_data
+    import random
+    """Generate a random chart using available data and chart types"""
+    # Available chart types (mix of data-driven and fake data charts)
+    chart_types = [
+        'line', 'grouped_bar', 'stacked_area_timeseries',  # Data-driven charts
+        'waterfall', 'horizontal_bar', 'basic_area', 'stacked_bar', 'scatter'  # Fake data charts
+    ]
+    
+    chart_type = random.choice(chart_types)
+    
+    try:
+        # Fake data charts (no real data needed)
+        if chart_type == 'waterfall':
+            return embed_waterfall_chart()
+        elif chart_type == 'horizontal_bar':
+            return embed_horizontal_bar_chart()
+        elif chart_type == 'basic_area':
+            return embed_basic_area_chart()
+        elif chart_type == 'stacked_bar':
+            return embed_stacked_bar_chart()
+        elif chart_type == 'scatter':
+            return embed_scatter_chart()
+        
+        # Data-driven charts
+        else:
+            metrics = ['revenue', 'expenses', 'new_users', 'returning_users']
+            metric = random.choice(metrics)
+            time_periods = ['Last 14 Days', 'Last 30 Days', 'Last 90 Days']
+            time_period = random.choice(time_periods)
+            
+            if chart_type == 'line':
+                data = get_data(
+                    time_period=time_period,
+                    comparison_type='No Comparison',
+                    period_type='Day',
+                    fields=[metric],
+                )
+                if data and data.get('selected_period'):
+                    dates = [i.get('date') for i in data.get('selected_period')]
+                    y = [i.get(metric) for i in data.get('selected_period')]
+                    return embed_line_chart(x=dates, y=y, show_label=True, name=metric.replace('_', ' ').title())
+            
+            elif chart_type == 'grouped_bar':
+                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
+                if bar_data and bar_data.get('selected_period'):
+                    return embed_grouped_bar_chart(bar_data, f"{metric.replace('_', ' ').title()} Breakdown")
+            
+            elif chart_type == 'stacked_area_timeseries':
+                data = get_data(
+                    time_period=time_period,
+                    comparison_type='No Comparison',
+                    period_type='Day',
+                    fields=[metric],
+                )
+                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
+                
+                if data and bar_data and bar_data.get('selected_period'):
+                    dates = [i.get('date') for i in data.get('selected_period')]
+                    dimensions = {}
+                    for item in bar_data.get('selected_period', [])[:6]:
+                        dim = item['dimension']
+                        cat = item['category']
+                        val = item['total_value']
+                        
+                        if dim not in dimensions:
+                            dimensions[dim] = {}
+                        dimensions[dim][cat] = val
+                    
+                    if len(dimensions) >= 1:
+                        stacked_data = {}
+                        for dim_name, categories in list(dimensions.items())[:2]:
+                            for cat_name, total_val in categories.items():
+                                series_name = f"{cat_name}"
+                                daily_vals = [total_val / len(dates) * (1 + 0.1 * (i % 7 - 3)) for i in range(len(dates))]
+                                stacked_data[series_name] = daily_vals
+                        
+                        if stacked_data:
+                            return embed_stacked_area_timeseries(dates, stacked_data, f"{metric.replace('_', ' ').title()} Composition")
+    
+    except Exception as e:
+        print(f"Error generating chart: {e}")
+    
+    # Final fallback: return a simple fake chart
+    return embed_basic_area_chart()

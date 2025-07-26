@@ -110,29 +110,29 @@ def create_and_populate_data(db_path: str = "test_metrics.db", num_days: int = 3
     print(f"Populated {db_path!r} with {total_rows} event rows over {num_days} days.")
     
     
-    # Start Mixed Media Modeling section
-    cur.execute("DROP TABLE IF EXISTS mmm")
-    cur.execute("""
-        CREATE TABLE mmm (
-            date         TEXT,
-            metric       TEXT,
-            data         TEXT
-        )
-    """)
-    exps = [
-        ('users',"2023-04-01","2025-05-01"),
-        ('users',"2018-07-01","2023-01-01"),
-        ('revenue',"2020-04-01","2025-06-01"),
-    ]
+    # # Start Mixed Media Modeling section
+    # cur.execute("DROP TABLE IF EXISTS mmm")
+    # cur.execute("""
+    #     CREATE TABLE mmm (
+    #         date         TEXT,
+    #         metric       TEXT,
+    #         data         TEXT
+    #     )
+    # """)
+    # exps = [
+    #     ('users',"2023-04-01","2025-05-01"),
+    #     ('users',"2018-07-01","2023-01-01"),
+    #     ('revenue',"2020-04-01","2025-06-01"),
+    # ]
     
-    for metric, start_date, end_date in exps:
-        print(metric,start_date,end_date)
-        mmm_output = create_mmm(start_date=start_date, end_date=end_date)
-        json_text = json.dumps(mmm_output, ensure_ascii=False)
-        cur.execute(
-            "INSERT INTO mmm (date, metric, data) VALUES (?, ?, ?)",
-            (start_date, metric, json_text)
-        )    
+    # for metric, start_date, end_date in exps:
+    #     print(metric,start_date,end_date)
+    #     mmm_output = create_mmm(start_date=start_date, end_date=end_date)
+    #     json_text = json.dumps(mmm_output, ensure_ascii=False)
+    #     cur.execute(
+    #         "INSERT INTO mmm (date, metric, data) VALUES (?, ?, ?)",
+    #         (start_date, metric, json_text)
+    #     )    
         
     conn.commit()
     conn.close()

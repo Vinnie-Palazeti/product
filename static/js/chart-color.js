@@ -43,9 +43,10 @@ function recolorAll() {
                 ...s,
                 lineStyle: { color: i === 0 ? rgbPrim : rgbSec },
                 itemStyle: { color: i === 0 ? rgbPrim : rgbSec }
+
             }))
         };
-        chart.setOption(newOption); 
+        chart.setOption(newOption);
     });
 }
 

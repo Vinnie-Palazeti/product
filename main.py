@@ -1,26 +1,19 @@
 from components.options import *
 from components.options import _option
 from components.charts import *
-
 from fasthtml.common import *
 from fasthtml.svg import *
 from datapulls import * 
 import json
-import random
 from db import *
 
-# another page.. large timeseries metric in the middle.. 
-# get an actual example up
 # hetzer server
 # nginx IP lockdown
 # google auth
     # but google auth for specific users..
 
 
-## daisyui default user theme...
-## NOW I need to handle AUTH..
-
-
+# create_and_populate_data(num_days=2000)
 
 headers = [
     Meta(charset="UTF-8"),
@@ -46,9 +39,15 @@ headers = [
     Link(rel='preconnect', href='https://fonts.googleapis.com'),
     Link(rel='preconnect', href='https://fonts.gstatic.com', crossorigin=True),
     Link(href='https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap', rel='stylesheet'),
-    Script(type='module', src='https://unpkg.com/cally'),
 
     Style("""
+        html {
+            font-family: 'Noto Sans', sans-serif;
+        }     
+        th {
+            font-weight: normal;
+        }             
+          
 
         .sidebar {
             width: 250px;
@@ -119,12 +118,14 @@ headers = [
         .no-left-padding * {
             padding-left: 0 !important;
         }  
+        
+        
               
     """)   
 ]
 
 app, rt = fast_app(
-    # title='IndyStats',
+    title='IndyStats',
     hdrs=headers, 
     default_hdrs=False, 
     live=True, 
@@ -584,92 +585,6 @@ def get(metric:str='users'):
         Script(src="/static/js/chart-color.js")            
         )
     )    
-
-
-def generate_random_chart():
-    """Generate a random chart using available data and chart types"""
-    # Available chart types (mix of data-driven and fake data charts)
-    chart_types = [
-        'line', 'grouped_bar', 'stacked_area_timeseries',  # Data-driven charts
-        'waterfall', 'horizontal_bar', 'basic_area', 'stacked_bar', 'scatter'  # Fake data charts
-    ]
-    
-    chart_type = random.choice(chart_types)
-    
-    try:
-        # Fake data charts (no real data needed)
-        if chart_type == 'waterfall':
-            return embed_waterfall_chart()
-        elif chart_type == 'horizontal_bar':
-            return embed_horizontal_bar_chart()
-        elif chart_type == 'basic_area':
-            return embed_basic_area_chart()
-        elif chart_type == 'stacked_bar':
-            return embed_stacked_bar_chart()
-        elif chart_type == 'scatter':
-            return embed_scatter_chart()
-        
-        # Data-driven charts
-        else:
-            metrics = ['revenue', 'expenses', 'new_users', 'returning_users']
-            metric = random.choice(metrics)
-            time_periods = ['Last 14 Days', 'Last 30 Days', 'Last 90 Days']
-            time_period = random.choice(time_periods)
-            
-            if chart_type == 'line':
-                data = get_data(
-                    time_period=time_period,
-                    comparison_type='No Comparison',
-                    period_type='Day',
-                    fields=[metric],
-                )
-                if data and data.get('selected_period'):
-                    dates = [i.get('date') for i in data.get('selected_period')]
-                    y = [i.get(metric) for i in data.get('selected_period')]
-                    return embed_line_chart(x=dates, y=y, show_label=True, name=metric.replace('_', ' ').title())
-            
-            elif chart_type == 'grouped_bar':
-                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
-                if bar_data and bar_data.get('selected_period'):
-                    return embed_grouped_bar_chart(bar_data, f"{metric.replace('_', ' ').title()} Breakdown")
-            
-            elif chart_type == 'stacked_area_timeseries':
-                data = get_data(
-                    time_period=time_period,
-                    comparison_type='No Comparison',
-                    period_type='Day',
-                    fields=[metric],
-                )
-                bar_data = get_bar_data(kpi=metric, dimension_list=None, time_period=time_period, comparison_type='No Comparison', period_type='Day')
-                
-                if data and bar_data and bar_data.get('selected_period'):
-                    dates = [i.get('date') for i in data.get('selected_period')]
-                    dimensions = {}
-                    for item in bar_data.get('selected_period', [])[:6]:
-                        dim = item['dimension']
-                        cat = item['category']
-                        val = item['total_value']
-                        
-                        if dim not in dimensions:
-                            dimensions[dim] = {}
-                        dimensions[dim][cat] = val
-                    
-                    if len(dimensions) >= 1:
-                        stacked_data = {}
-                        for dim_name, categories in list(dimensions.items())[:2]:
-                            for cat_name, total_val in categories.items():
-                                series_name = f"{cat_name}"
-                                daily_vals = [total_val / len(dates) * (1 + 0.1 * (i % 7 - 3)) for i in range(len(dates))]
-                                stacked_data[series_name] = daily_vals
-                        
-                        if stacked_data:
-                            return embed_stacked_area_timeseries(dates, stacked_data, f"{metric.replace('_', ' ').title()} Composition")
-    
-    except Exception as e:
-        print(f"Error generating chart: {e}")
-    
-    # Final fallback: return a simple fake chart
-    return embed_basic_area_chart()
 
 @rt("/random")
 def get():
